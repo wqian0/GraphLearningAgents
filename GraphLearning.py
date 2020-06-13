@@ -443,7 +443,7 @@ results = pk.load(open(r"beta-lambda-heatmap micro up to 2.pickle", "rb"))
 
 plt.figure(1)
 plt.imshow(results, cmap = 'RdBu',extent=[.01, 2, .01, 2], origin='lower', vmin = -.01, vmax = .01, aspect = 1, norm = mn.MidpointNormalize(midpoint=0))
-plt.title(r"$D_{KL}(A || f(A^*)) - D_{KL}(A || f(A^*))$", size = 16)
+plt.title(r"$D_{KL}(A || f(A^*)) - D_{KL}(A || f(A))$", size = 16)
 plt.xlabel(r"$\lambda$", size = 16)
 plt.ylabel(r"$\beta$", size = 16)
 plt.colorbar()
