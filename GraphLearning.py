@@ -433,7 +433,7 @@ A_target = modular_toy_paper()
 beta_range = np.linspace(1e-6, 2, 500)
 lambda_range = np.linspace(1e-6, 2, 500)
 results = np.zeros((len(beta_range), len(lambda_range)))
-results = pk.load(open(r"beta-lambda-heatmap micro up to 2.pickle", "rb"))
+results = pk.load(open(r"beta-lambda-heatmap micro up to 2, multiplicative.pickle", "rb"))
 # for i in range(len(beta_range)):
 #     print(i)
 #     for j in range(len(lambda_range)):
@@ -442,8 +442,8 @@ results = pk.load(open(r"beta-lambda-heatmap micro up to 2.pickle", "rb"))
 #         results[i][j] = score
 
 plt.figure(1)
-plt.imshow(results, cmap = 'RdBu',extent=[.01, 2, .01, 2], origin='lower', vmin = -.01, vmax = .01, aspect = 1, norm = mn.MidpointNormalize(midpoint=0))
-plt.title(r"$D_{KL}(A || f(A^*)) - D_{KL}(A || f(A))$", size = 16)
+plt.imshow(results, cmap = 'RdBu',extent=[.01, 2, .01, 2], origin='lower', vmin = .95, vmax = 1.05, aspect = 1, norm = mn.MidpointNormalize(midpoint=1))
+plt.title(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size = 16)
 plt.xlabel(r"$\lambda$", size = 16)
 plt.ylabel(r"$\beta$", size = 16)
 plt.colorbar()
@@ -451,11 +451,11 @@ plt.colorbar()
 plt.figure(2)
 
 for i in range(25, len(lambda_range), 25):
-    #plt.ylim([0.6, 1.4])
+    plt.ylim([0.6, 1.4])
     plt.plot(lambda_range, results[i], label = r"$\beta =$"+str(beta_range[i])[0:4], linewidth = .8, color =
     colorFader('red', 'green', np.power(i/len(lambda_range), .75)))
 plt.xlabel(r"$\lambda$", size = 16)
-plt.ylabel(r"$D_{KL}(A || f(A^*)) - D_{KL}(A || f(A))$", size = 16)
+plt.ylabel(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size = 16)
 plt.legend(prop={'size': 8}, loc = 1, ncol = 2)
 plt.tight_layout()
 
@@ -469,10 +469,12 @@ for i in range(1, len(results)):
 plt.figure(3)
 plt.plot(lambda_vals, score_vals, color = "orange")
 plt.xlabel(r"$\lambda$", size = 16)
-plt.ylabel(r"$D_{KL}(A || f(A^*)) - D_{KL}(A || f(A))$", size = 16)
+plt.ylabel(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size = 16)
+plt.tight_layout()
 
 plt.figure(4)
 plt.plot(beta_range[1:], lambda_vals, color = "orange")
 plt.xlabel(r"$\beta$", size = 16)
 plt.ylabel(r"$\lambda ^*$", size = 16)
+plt.tight_layout()
 plt.show()
