@@ -1,11 +1,14 @@
 import copy
-
+from colour import Color
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
+from matplotlib import colors
 from graphviz import Digraph
 import os
 import tempfile
 import itertools
+import pickle as pk
 from copy import deepcopy
 import copy
 import pandas as pd
@@ -17,7 +20,7 @@ from scipy import stats
 os.environ["PATH"] += os.pathsep + 'C:/Users/billy/Downloads/graphviz-2.38/release/bin'
 import small_world as sw
 import igraph as ig
-
+import MidpointNormalize as mn
 rng = np.random.RandomState()
 #seeded_rng = np.random.RandomState(17310145)
 seeded_rng = rng
@@ -77,9 +80,10 @@ def get_random_modular(n, modules, directedEdges, p, getCommInfo=False):
         return adjMatrix
 
 def learn(A, beta):
+    A = normalize(A)
     inverse_argument = np.identity(len(A)) - np.exp(-beta)*A
     inverse = np.linalg.pinv(inverse_argument)
-    return (1-np.exp(-beta))*np.dot(A, inverse)
+    return normalize((1-np.exp(-beta))*np.dot(A, inverse))
 
 def get_stationary(A):
     lam, vec = sp.linalg.eig(A, left=True, right=False)
@@ -105,6 +109,8 @@ def normalize(A, delLoops = False):
     return B
 
 def KL_Divergence(U, V):
+    U = normalize(U)
+    V = normalize(V)
     pi = get_stationary2(U)
     result = 0
     for i in range(len(U)):
@@ -237,7 +243,12 @@ def modular_toy_paper():
     result[10][14], result[14][10] =0, 0
     return result
 
-
+def biased_modular(cross_cluster_bias):
+    result = modular_toy_paper()
+    result[0][14], result[14][0] = cross_cluster_bias, cross_cluster_bias
+    result[4][5], result[5][4] = cross_cluster_bias, cross_cluster_bias
+    result[9][10], result[10][9] = cross_cluster_bias, cross_cluster_bias
+    return result
 
 def agent_network_sim(network, agent_networks_init, iterations, betas):
     divergences = np.zeros((N, iterations))
@@ -325,10 +336,10 @@ def printMatrixToFile(M, file):
     file.write("\n")
 
 def KL_score(A, beta, A_target = None):
-    return KL_Divergence(normalize(A), normalize(learn(normalize(A), beta)))
+    return KL_Divergence(A, learn(A, beta))
 
 def KL_score_external(A_input, beta, A_target):
-    return KL_Divergence(normalize(A_target), normalize(learn(A_input, beta)))
+    return KL_Divergence(A_target, learn(A_input, beta))
 
 def automorphism_count(A, beta, A_target = None):
     IG = ig.Graph.Adjacency(A.tolist())
@@ -372,10 +383,10 @@ def optimize(A, beta, iterations, scoreFunc, flipFunc, minimize = True, A_target
             collecting = True
         if collecting:
             bestVals.append(bestVal)
-        curr = compose(flipFunc, seeded_rng.randint(len(A)))(best)
+        curr = compose(flipFunc, 1)(best)
         count = 0
         while not isConnected(curr):
-            curr = compose(flipFunc, seeded_rng.randint(len(A)))(best)
+            curr = compose(flipFunc, 1)(best)
             count += 1
             if count > 30:
                 return bestVal, factor * np.array(bestVals), best
@@ -410,174 +421,58 @@ def get_truncated_normal(mean, sd, low, upp):
     return stats.truncnorm(
         (low - mean) / sd, (upp - mean) / sd, loc=mean, scale=sd)
 
-G = nx.random_regular_graph(4, N_internal)
-A = np.array(nx.adjacency_matrix(G).todense(), dtype = float)
-bestVal, bestVals, unnormalized_network  = optimize(A, .33, 20000, KL_score, rewire_regular, minimize = True)
-IG = ig.Graph.Adjacency(unnormalized_network.tolist())
-G_internal = nx.from_numpy_matrix(unnormalized_network)
-graph_pos = nx.spring_layout(G_internal, iterations=50)
-nx.draw_networkx(G_internal, graph_pos)
-print(str(55)+"\t"+str(bestVal)+"\t"+str(nx.transitivity(G_internal))+"\t"+str(IG.count_automorphisms_vf2()))
+def colorFader(c1,c2,mix=0): #fade (linear interpolate) from color c1 (at mix=0) to c2 (mix=1)
+    c1=np.array(mpl.colors.to_rgb(c1))
+    c2=np.array(mpl.colors.to_rgb(c2))
+    return mpl.colors.to_hex((1-mix)*c1 + mix*c2)
 
-plt.figure()
-plt.xlabel("iteration")
-plt.ylabel("KL Divergence between original network and learned network")
-plt.plot(bestVals)
-'''
-clustering = np.zeros(200000)
-symmetry = np.zeros(200000)
-learnability = np.zeros(200000)
-for i in range(200000):
-    G = nx.random_regular_graph(4, N_internal)
-    A = np.array(nx.adjacency_matrix(G).todense(), dtype = float)
-    IG = ig.Graph.Adjacency(A.tolist())
-    score = KL_Divergence(normalize(A), normalize(learn(normalize(A), .33)))
-    symmetry[i] = IG.count_automorphisms_vf2()
-    learnability[i] = score
-    clustering[i] = nx.transitivity(G)
-    #graph_pos=nx.spring_layout(G, k=1.0, iterations=50)
-    #nx.draw_networkx(G, graph_pos)
-    print(str(i)+"\t"+str(clustering[i])+"\t"+str(score)+"\t"+str(symmetry[i]))
-plt.figure()
-plt.scatter(clustering, learnability, s = 10, alpha = .2)
-plt.figure()
-plt.scatter(symmetry, learnability, s = 10, alpha = .2)
-plt.figure()
-plt.scatter(symmetry, clustering, s= 10, alpha = .2)
 
-plt.figure()
-modular = modular_toy_paper()
-G_modular = nx.from_numpy_matrix(modular)
-graph_pos=nx.spring_layout(G_modular, k=1.0, iterations=50)
-nx.draw_networkx(G_modular, graph_pos)
-print(str(nx.transitivity(G_modular))+"\t"+str(KL_Divergence(normalize(modular), normalize(learn(normalize(modular), .3)))))
-'''
-'''
-bestVal, bestVals, network = optimize_divergence(create_undirected_network(N_internal, 10), .3, 2000, minimize = True)
-#network = modular_toy_paper()
-letters = ["y","u","i","o","n"]
-rd.shuffle(letters)
-generate_key_sequence(network, letters, 100)
-'''
-'''
+A_target = modular_toy_paper()
+
+
+beta_range = np.linspace(1e-6, 2, 500)
+lambda_range = np.linspace(1e-6, 2, 500)
+results = np.zeros((len(beta_range), len(lambda_range)))
+results = pk.load(open(r"beta-lambda-heatmap micro up to 2.pickle", "rb"))
+# for i in range(len(beta_range)):
+#     print(i)
+#     for j in range(len(lambda_range)):
+#         A_init = biased_modular(lambda_range[j])
+#         score = KL_score_external(A_init, beta_range[i], A_target)/KL_score(A_target, beta_range[i])
+#         results[i][j] = score
+
+plt.figure(1)
+plt.imshow(results, cmap = 'RdBu',extent=[.01, 2, .01, 2], origin='lower', vmin = -.01, vmax = .01, aspect = 1, norm = mn.MidpointNormalize(midpoint=0))
+plt.title(r"$D_{KL}(A || f(A^*)) - D_{KL}(A || f(A^*))$", size = 16)
+plt.xlabel(r"$\lambda$", size = 16)
+plt.ylabel(r"$\beta$", size = 16)
+plt.colorbar()
+
 plt.figure(2)
-plt.title("agent network")
-agent_network =  normalize(create_agent_network(N, sources, 30))
-#agent_network = normalize(create_undirected_network(N, 30))
 
-G = nx.from_numpy_matrix(agent_network, create_using= nx.MultiDiGraph)
-graph_pos=nx.spring_layout(G, k=1.0, iterations=50)
-nx.draw_networkx(G, graph_pos)
+for i in range(25, len(lambda_range), 25):
+    #plt.ylim([0.6, 1.4])
+    plt.plot(lambda_range, results[i], label = r"$\beta =$"+str(beta_range[i])[0:4], linewidth = .8, color =
+    colorFader('red', 'green', np.power(i/len(lambda_range), .75)))
+plt.xlabel(r"$\lambda$", size = 16)
+plt.ylabel(r"$D_{KL}(A || f(A^*)) - D_{KL}(A || f(A))$", size = 16)
+plt.legend(prop={'size': 8}, loc = 1, ncol = 2)
+plt.tight_layout()
 
-print("AGENT NETWORK")
-print(pd.DataFrame(normalize(agent_network)))
-
-plt.figure()
-agent_networks_init = np.zeros((N, N_internal, N_internal), dtype = float)
-unnormalized_network = modular_toy_paper()
-
-plt.figure(55)
-#bestVal, bestVals, unnormalized_network = optimize_divergence(create_undirected_network(N_internal, 30), .5, 10000, minimize = True)
-unnormalized_network = create_undirected_network(N_internal, 100)
-print("DONE")
-bestVal = KL_Divergence(normalize(unnormalized_network), normalize(learn(normalize(unnormalized_network), .33)))
-G = ig.Graph.Adjacency(unnormalized_network.tolist())
-G_internal = nx.from_numpy_matrix(unnormalized_network)
-graph_pos = nx.spring_layout(G_internal, iterations=50)
-nx.draw_networkx(G_internal, graph_pos)
-print(str(55)+"\t"+str(bestVal)+"\t"+str(nx.transitivity(G_internal))+"\t"+str(G.count_automorphisms_vf2()))
-
-
-plt.figure()
-#unnormalized_network = flipEdge(N_internal, modular_toy_paper(), ensureConnected = True)
-unnormalized_network = modular_toy_paper()
-# unnormalized_network[4][5] = 0
-# unnormalized_network[5][4] = 0
-# unnormalized_network[10][14] = 1
-# unnormalized_network[14][10] = 1
-G = ig.Graph.Adjacency(unnormalized_network.tolist())
-G_internal = nx.from_numpy_matrix(unnormalized_network)
-graph_pos = nx.circular_layout(G_internal)
-nx.draw_networkx(G_internal, graph_pos)
-learnability = KL_Divergence(normalize(unnormalized_network), normalize(learn(normalize(unnormalized_network), .5)))
-transitivity = nx.transitivity(G_internal)
-symmetry = G.count_automorphisms_vf2()
-print(str(learnability)+"\t"+str(transitivity)+"\t"+str(symmetry))
-'''
-'''
-'''
-'''
-agent_networks_init[0] = normalize(unnormalized_network)
-for i in range(1, sources):
-    #agent_networks_init[i] = normalize(flipEdge(N_internal, unnormalized_network, ensureConnected = True))
-    agent_networks_init[i] = normalize(unnormalized_network)
-
-
-#agent_networks_init[2] = normalize(create_undirected_network(N_internal, 15))
-
-for i in np.arange(0, N, 5):
-    plt.figure(i+11)
-    G_internal = nx.from_numpy_matrix(agent_networks_init[i], create_using= nx.MultiDiGraph)
-    graph_pos=nx.spring_layout(G_internal, iterations = 50)
-    edgewidth = [ d['weight'] for (u,v,d) in G_internal.edges(data=True)]
-
-    nx.draw_networkx(G_internal, graph_pos, width = np.zeros(N_internal))
-    nx.draw_networkx_edges(G_internal, graph_pos, width = edgewidth,)
-
-betas = np.ones(N)*.5
-
-agent_networks, divergences = agent_network_sim(agent_network, agent_networks_init, 100, betas)
-
-for i in np.arange(N):
-    plt.figure(37 + i)
-    G_internal2 = nx.from_numpy_matrix(normalize(agent_networks[i]), create_using= nx.MultiDiGraph)
-    graph_pos=nx.spring_layout(G_internal2, iterations = 50)
-    edgewidth = [ d['weight'] for (u,v,d) in G_internal2.edges(data=True)]
-    nx.draw_networkx(G_internal2, graph_pos, width = np.zeros(N_internal))
-    nx.draw_networkx_edges(G_internal2, graph_pos, width = edgewidth,)
-
-
+#minimums
+lambda_vals = np.zeros(len(beta_range) - 1)
+score_vals = np.zeros(len(beta_range) - 1)
+for i in range(1, len(results)):
+    argmin = np.argmin(results[i])
+    lambda_vals[i-1] = lambda_range[argmin]
+    score_vals[i-1] = results[i][argmin]
 plt.figure(3)
-plt.xlabel("Iteration")
-plt.ylabel("KL Divergence with Source Network")
-for i in range(N):
-    plt.plot(divergences[i], label = "agent "+str(i))
-plt.legend(loc = 'center right')
-'''
-'''
-internal = create_undirected_network(N_internal, 30)
-vals_list = []
-for i in range(30):
-    bestVal, bestVals, bestNetwork = optimize_divergence(create_undirected_network(N_internal, 30), .3, 5000, minimize= True)
-    vals_list.append(bestVals)
+plt.plot(lambda_vals, score_vals, color = "orange")
+plt.xlabel(r"$\lambda$", size = 16)
+plt.ylabel(r"$D_{KL}(A || f(A^*)) - D_{KL}(A || f(A))$", size = 16)
 
-plt.figure(7)
-G_internal = nx.from_numpy_matrix(bestNetwork)
-graph_pos=nx.spring_layout(G_internal, k=1.0, iterations=50)
-nx.draw_networkx(G_internal, graph_pos)
-
-plt.figure(6)
-for i in range(30):
-    plt.plot(vals_list[i], label = str(i), linewidth = .5)
-plt.legend()
-print(pd.DataFrame(normalize(bestNetwork)))
-print(pd.DataFrame(normalize(learn(bestNetwork, .3))))
-
-transitivity_optimized = nx.transitivity(G_internal)
-print(transitivity)
-print(transitivity_optimized)
-'''
-# network = normalize(np.array(get_random_modular(N, 1, 12, 0), dtype = float))
-# print(pd.DataFrame(network))
-#
-# U, V, divergences, divergences_init, divergences_init2 = two_agents(network, 500, .8, .3)
-#
-# print(pd.DataFrame(U))
-# print(pd.DataFrame(V))
-# plt.figure(0)
-# plt.plot(divergences)
-# plt.figure(1)
-# plt.title("phase plot")
-# plt.scatter(divergences_init, divergences_init2, s = 15)
-
+plt.figure(4)
+plt.plot(beta_range[1:], lambda_vals, color = "orange")
+plt.xlabel(r"$\beta$", size = 16)
+plt.ylabel(r"$\lambda ^*$", size = 16)
 plt.show()
