@@ -115,7 +115,7 @@ def KL_Divergence(U, V):
     result = 0
     for i in range(len(U)):
         for j in range(len(U)):
-            if not np.isclose(U[i][j], 0, rtol = 1e-8) and not np.isclose(V[i][j], 0, rtol = 1e-8):
+            if not np.isclose(U[i][j], 0, rtol = 1e-10) and not np.isclose(V[i][j], 0, rtol = 1e-10):
                 result += pi[i] * U[i][j] * np.log(V[i][j]/U[i][j])
     return -result
 
@@ -243,11 +243,22 @@ def modular_toy_paper():
     result[10][14], result[14][10] =0, 0
     return result
 
-def biased_modular(cross_cluster_bias):
+def biased_modular(cross_cluster_bias, boundary_bias):
     result = modular_toy_paper()
     result[0][14], result[14][0] = cross_cluster_bias, cross_cluster_bias
     result[4][5], result[5][4] = cross_cluster_bias, cross_cluster_bias
     result[9][10], result[10][9] = cross_cluster_bias, cross_cluster_bias
+    for i in [0, 4]:
+        for j in range(1, 4):
+            result[i][j], result[j][i] = boundary_bias, boundary_bias
+
+    for i in [5, 9]:
+        for j in range(6, 9):
+            result[i][j], result[j][i] = boundary_bias, boundary_bias
+
+    for i in [10, 14]:
+        for j in range(11, 14):
+            result[i][j], result[j][i] = boundary_bias, boundary_bias
     return result
 
 def agent_network_sim(network, agent_networks_init, iterations, betas):
@@ -429,52 +440,66 @@ def colorFader(c1,c2,mix=0): #fade (linear interpolate) from color c1 (at mix=0)
 
 A_target = modular_toy_paper()
 
-
 beta_range = np.linspace(1e-6, 2, 500)
-lambda_range = np.linspace(1e-6, 2, 500)
-results = np.zeros((len(beta_range), len(lambda_range)))
-results = pk.load(open(r"beta-lambda-heatmap micro up to 2, multiplicative.pickle", "rb"))
-# for i in range(len(beta_range)):
+lambda_cc_range = np.linspace(1e-6, 2, 500)
+lambda_b_range = np.linspace(1e-6, 2, 500)
+results = np.zeros((len(lambda_cc_range), len(lambda_b_range)))
+results2 = np.zeros((len(lambda_cc_range), len(lambda_b_range)))
+results = pk.load(open(r"beta-lambda-heatmap micro up to 2, .1, boundary edges diff.pickle", "rb"))
+results2 = pk.load(open(r"beta-lambda-heatmap micro up to 2, .1, boundary edges ratio.pickle", "rb"))
+# for i in range(len(lambda_cc_range)):
 #     print(i)
-#     for j in range(len(lambda_range)):
-#         A_init = biased_modular(lambda_range[j])
-#         score = KL_score_external(A_init, beta_range[i], A_target)/KL_score(A_target, beta_range[i])
-#         results[i][j] = score
+#     for j in range(len(lambda_b_range)):
+#         A_init = biased_modular(lambda_cc_range[i], lambda_b_range[j])
+#         score_ext = KL_score_external(A_init, 5, A_target)
+#         score_baseline = KL_score(A_target, 5)
+#         results[i][j] = score_ext - score_baseline
+#         results2[i][j] = score_ext/score_baseline
 
+# row, col = np.unravel_index(results2.argmin(), results2.shape)
+# results2[row][col] = 100
 plt.figure(1)
-plt.imshow(results, cmap = 'RdBu',extent=[.01, 2, .01, 2], origin='lower', vmin = .95, vmax = 1.05, aspect = 1, norm = mn.MidpointNormalize(midpoint=1))
+plt.imshow(results, cmap = 'RdBu',extent=[.01, 2, .01, 2], origin='lower', aspect = 1, norm = mn.MidpointNormalize(midpoint=0))
+plt.title(r"$D_{KL}(A || f(A^*))-D_{KL}(A || f(A))$", size = 16)
+plt.xlabel(r"$\lambda_b$", size = 16)
+plt.ylabel(r"$\lambda _{cc}$", size = 16)
+plt.colorbar()
+
+plt.figure(5)
+plt.imshow(results2, cmap = 'RdBu',extent=[.01, 2, .01, 2], origin='lower', vmax = 1.3, vmin = .8, aspect = 1, norm = mn.MidpointNormalize(midpoint=1))
 plt.title(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size = 16)
-plt.xlabel(r"$\lambda$", size = 16)
-plt.ylabel(r"$\beta$", size = 16)
+plt.xlabel(r"$\lambda_b$", size = 16)
+plt.ylabel(r"$\lambda _{cc}$", size = 16)
 plt.colorbar()
 
 plt.figure(2)
-
-for i in range(25, len(lambda_range), 25):
-    plt.ylim([0.6, 1.4])
-    plt.plot(lambda_range, results[i], label = r"$\beta =$"+str(beta_range[i])[0:4], linewidth = .8, color =
-    colorFader('red', 'green', np.power(i/len(lambda_range), .75)))
-plt.xlabel(r"$\lambda$", size = 16)
+for i in range(0, len(lambda_cc_range), 25):
+    #plt.ylim([0.6, 2])
+    plt.plot(lambda_cc_range, results2[:, i], label = r"$\lambda_{b} =$"+str(lambda_b_range[i])[0:4], linewidth = .8, color =
+    colorFader('red', 'green', np.power(i/len(lambda_cc_range), .75)))
+plt.xlabel(r"$\lambda_{cc}$", size = 16)
 plt.ylabel(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size = 16)
 plt.legend(prop={'size': 8}, loc = 1, ncol = 2)
 plt.tight_layout()
 
 #minimums
-lambda_vals = np.zeros(len(beta_range) - 1)
-score_vals = np.zeros(len(beta_range) - 1)
+lambda_b_vals = np.zeros(len(lambda_cc_range) - 1)
+score_vals = np.zeros(len(lambda_cc_range) - 1)
 for i in range(1, len(results)):
     argmin = np.argmin(results[i])
-    lambda_vals[i-1] = lambda_range[argmin]
+    lambda_b_vals[i-1] = lambda_b_range[argmin]
     score_vals[i-1] = results[i][argmin]
 plt.figure(3)
-plt.plot(lambda_vals, score_vals, color = "orange")
-plt.xlabel(r"$\lambda$", size = 16)
+plt.plot(lambda_cc_range[1:], score_vals, color = "orange")
+plt.xlabel(r"$\lambda_{cc}$", size = 16)
 plt.ylabel(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size = 16)
 plt.tight_layout()
 
 plt.figure(4)
-plt.plot(beta_range[1:], lambda_vals, color = "orange")
-plt.xlabel(r"$\beta$", size = 16)
-plt.ylabel(r"$\lambda ^*$", size = 16)
+plt.plot(lambda_cc_range[1:], lambda_b_vals, color = "orange")
+plt.xlabel(r"$\lambda_{cc}$", size = 16)
+plt.ylabel(r"$\lambda_{b} ^*$", size = 16)
 plt.tight_layout()
+
+
 plt.show()
