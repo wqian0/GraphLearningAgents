@@ -1,6 +1,7 @@
 import copy
 from colour import Color
-import numpy as np
+#import numpy as np
+import mynumpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib import colors
@@ -14,6 +15,7 @@ import copy
 import pandas as pd
 import networkx as nx
 import scipy as sp
+from scipy import optimize as op
 import random as rd
 import msvcrt
 from scipy import stats
@@ -21,6 +23,11 @@ os.environ["PATH"] += os.pathsep + 'C:/Users/billy/Downloads/graphviz-2.38/relea
 import small_world as sw
 import igraph as ig
 import MidpointNormalize as mn
+import unionfind as uf
+
+import warnings
+warnings.filterwarnings("ignore")
+
 rng = np.random.RandomState()
 #seeded_rng = np.random.RandomState(17310145)
 seeded_rng = rng
@@ -100,13 +107,10 @@ def get_stationary2(A):
     return P10001[0]
 def normalize(A, delLoops = False):
     B = deepcopy(A)
-    if delLoops:
-        for i in range(len(A)):
-            B[i][i] = 0.0
-    for i in range(len(A)):
-        if not np.all(B[i] == 0):
-            B[i] /= np.sum(B[i])
-    return B
+    J = np.ones((len(A), len(A)))
+    output = B / (B @ J)
+    output[np.isnan(output)] = 0
+    return output
 
 def KL_Divergence(U, V):
     U = normalize(U)
@@ -115,29 +119,9 @@ def KL_Divergence(U, V):
     result = 0
     for i in range(len(U)):
         for j in range(len(U)):
-            if not np.isclose(U[i][j], 0, rtol = 1e-10) and not np.isclose(V[i][j], 0, rtol = 1e-10):
+            if not np.isclose(U[i][j], 0, rtol = 1e-16) and not np.isclose(V[i][j], 0, rtol = 1e-16):
                 result += pi[i] * U[i][j] * np.log(V[i][j]/U[i][j])
     return -result
-
-def two_agents(init, iterations, beta_1, beta_2):
-    U = init
-    V = np.zeros((N_internal, N_internal))
-    divergences = np.zeros(iterations)
-    divergences_init = np.zeros(iterations)
-    divergences_init2 = np.zeros(iterations)
-    for i in range(iterations):
-        print(i)
-        V = V + learn(U, beta_2)
-        V = normalize(V)
-
-        U = U + learn(V, beta_1)
-        U = normalize(U)
-
-        divergences[i] = KL_Divergence(U, V)
-        divergences_init[i] = KL_Divergence(init, U)
-        divergences_init2[i] = KL_Divergence(init, V)
-
-    return U, V, divergences, divergences_init, divergences_init2
 
 def create_agent_network(N, numSources, edges):
     adjMatrix = np.zeros((N, N), dtype = float)
@@ -278,7 +262,7 @@ def agent_network_sim(network, agent_networks_init, iterations, betas):
     return agent_networks, divergences
 
 def check_symmetric(a, rtol=1e-05, atol=1e-08):
-    return np.allclose(a, a.T, rtol=rtol, atol=atol)
+    return np.allclose(a, a.T, rtol=rtol, atol=atol) and np.allclose(np.diag(a), np.zeros(len(a)))
 
 def flipEdge(A, ensureConnected = True):
     B = deepcopy(A)
@@ -349,6 +333,25 @@ def printMatrixToFile(M, file):
 def KL_score(A, beta, A_target = None):
     return KL_Divergence(A, learn(A, beta))
 
+def KL_score_ext_zipped(input, beta):
+    cc_bias, b_bias = input
+    if cc_bias < 1e-8 or b_bias < 1e-8:
+        return 100
+    return KL_score_external(biased_modular(cc_bias, b_bias), beta, modular_toy_paper())
+
+counterOpt = 0
+mod_network = modular_toy_paper()
+def KL_score_ext_full(input, beta):
+    global counterOpt, mod_network
+    counterOpt += 1
+    if counterOpt % 1000 == 0:
+        print(counterOpt)
+    iu = np.triu_indices(15, k = 1)
+    A = np.zeros((15,15))
+    A[iu] = input
+    A = np.maximum(A, A.T)
+    return KL_score_external(A, beta, mod_network)
+
 def KL_score_external(A_input, beta, A_target):
     return KL_Divergence(A_target, learn(A_input, beta))
 
@@ -356,6 +359,189 @@ def automorphism_count(A, beta, A_target = None):
     IG = ig.Graph.Adjacency(A.tolist())
     return IG.count_automorphisms_vf2()
 
+def get_automorphisms(A):
+    IG = ig.Graph.Adjacency(A.tolist())
+    return np.transpose(np.array(IG.get_automorphisms_vf2()))
+
+def get_regular_graph(N, d):
+    return nx.to_numpy_matrix(nx.random_regular_graph(d, N))
+def get_structurally_symmetric(A):
+    autos = get_automorphisms(A)
+    # print(autos)
+    disj_set = uf.UnionFind()
+    for i in range(len(A)):
+        disj_set.add(i)
+    for i in range(len(A)):
+        # print(i)
+        for j in range(len(autos[0])):
+            disj_set.union(i, autos[i][j])
+    return disj_set.components(), disj_set.component_mapping()
+
+#input: symmetric adj matrix
+def compute_line_graph(A):
+    G_input = nx.from_numpy_matrix(A)
+    print("AHH")
+    return nx.to_numpy_matrix(nx.line_graph(G_input))
+
+def unique_edges(A, beta, A_target = None):
+    edge_labels, inv_labels, line_graph = compute_line_graph_details(A, 30)
+    components, comp_mappings = get_structurally_symmetric(line_graph)
+    return components, comp_mappings, edge_labels, inv_labels
+
+
+def grad_zipped(input, P_0, eta, J, I):
+    iu = np.triu_indices(15, k=1)
+    A = np.zeros((15, 15))
+    A[iu] = input
+    A = np.maximum(A, A.T)
+    output = gradient(P_0, A, eta, J, I)
+    return output[iu]
+
+
+def cost_func_zipped(input, P_0, eta, J, I):
+    iu = np.triu_indices(15, k=1)
+    A = np.zeros((15, 15))
+    A[iu] = input
+    A = np.maximum(A, A.T)
+    cost = cost_func(P_0, A, eta, J, I)
+    return cost
+
+def cost_func(P_0, A, eta, J, I):
+    AJ = A @ J
+    P_f = A / AJ
+    P_f[np.isnan(P_f)] = 0
+    Q = np.linalg.pinv(I - eta * P_f)
+    prod = P_f @ Q
+    M2 = np.log(prod/ P_0)
+    M2[P_0 == 0] = 0
+    if(np.any(M2 == -np.inf)):
+        print("AGH")
+        return 1000
+    return -np.trace(P_0.T @ M2)
+
+def gradient(P_0, A, eta, J, I):
+    AJ = A @ J
+    P_f = A / AJ
+    P_f[np.isnan(P_f)] = 0
+    Q = np.linalg.pinv(I- eta * P_f)
+    R = P_0 / (P_f @ Q)
+    R[np.isnan(R)] = 0
+    S = (eta * Q.T @ P_f.T - I) @ (R @ Q.T)/ (AJ * AJ)
+    S[np.isnan(S)] = 0
+    output = S * AJ - (S*A) @ J
+    return output
+
+def cost_X(P_0, X, eta, J, I):
+    A = sigmoid(X)
+    AJ = A @ J
+    P_f = A / AJ
+    Q = np.linalg.inv(I - eta * P_f)
+    M2 = np.log(P_f @ Q / P_0)
+    M2[np.isnan(M2)] = 0
+    M2[M2 == np.inf] = 0
+    if(np.any(M2 == -np.inf)):
+        print("WHAT")
+        return 10000
+    return -np.trace(P_0.T @ M2)
+
+countCost = 0
+def cost_X_zipped(input, P_0, eta, J, I):
+    global countCost
+    iu = np.triu_indices(15, k=1)
+    X = np.zeros((15, 15))
+    X[iu] = input
+    X = np.maximum(X, X.T)
+    cost = cost_X(P_0, X, eta, J, I)
+    countCost += 1
+    if countCost % 10000 == 0:
+        print(cost)
+    return cost
+def sigmoid(X):
+    return 1/(1+np.exp(-X))
+def inv_sigmoid(Y):
+    return np.log(Y/(1-Y))
+
+def grad_X(P_0, X, eta, J, I):
+    A = sigmoid(X)
+    AJ = A @ J
+    P_f = A / AJ
+    Q = np.linalg.inv(I - eta * P_f)
+    R = P_0 / (P_f @ Q)
+    S = (eta * Q.T @ P_f.T - I) @ (R @ Q.T) / (AJ * AJ)
+    return A *(1-A) * (S * AJ - ((S * A) @ J))
+    return output
+def grad_X_zipped(input, P_0, eta, J, I):
+    iu = np.triu_indices(15, k=1)
+    X = np.zeros((15, 15))
+    X[iu] = input
+    X = np.maximum(X, X.T)
+    output = grad_X(P_0, X, eta, J, I)
+    return output[iu]
+
+def descend_X(P_0, beta, rate, iterations):
+    eta = np.exp(-beta)
+    I = np.identity(len(P_0))
+    J = np.ones((len(P_0), len(P_0)))
+    count = 0
+    norm = np.inf
+    mod = normalize(modular_toy_paper())
+    X = np.ones((len(P_0), len(P_0)))
+    while count < iterations or norm > 1e-8:
+        descent = rate / (len(P_0)) * grad_X(P_0, X, eta, J, I)
+        X -= descent
+        count += 1
+        norm = np.linalg.norm(descent)
+        if count % 1000 == 0:
+            print(str(norm) + "\t" + str(count) + "\t" + str(
+                KL_score_external(np.exp(X), .3, mod)))
+    A = sigmoid(X)
+    result = A / (A @ J)
+    return result
+def descend(P_0, beta, rate, iterations):
+    eta = np.exp(-beta)
+    I = np.identity(len(P_0))
+    A = biased_modular(.25, .8)
+    J = np.ones((len(P_0), len(P_0)))
+    count = 0
+    norm = np.inf
+    mod = modular_toy_paper()
+    while count < iterations or norm > 1e-8:
+        descent = rate / (len(P_0)** 2) * gradient(P_0, A, eta, J, I)
+        A -= descent
+        count += 1
+        norm = np.linalg.norm(descent)
+        A[A < 0] = 0
+        if count % 1000 == 0:
+            cost = cost_func(P_0, A, eta, J, I)
+            print(str(norm)+"\t"+str(count)+"\t"+str(np.min(A))+"\t"+str(KL_score_external(A, .3, modular_toy_paper()))+"\t"+str(cost))
+    result = A / np.dot(A, J)
+    return result
+def compute_line_graph_details(A, edges):
+    edge_labels = dict()
+    count = 0
+    for r in range(len(A)-1):
+        for c in range(r+1, len(A)):
+            if A[r][c] == 1.0:
+                edge_labels[(r,c)] = count
+                count += 1
+    inv_labels = {v: k for k, v in edge_labels.items()}
+    keys = list(edge_labels.keys())
+    for k in keys:
+        r,c = k
+        edge_labels[(c,r)] = edge_labels[(r,c)]
+    output = np.zeros((edges, edges))
+    for i in range(edges - 1):
+        a, b = inv_labels[i]
+        for j in range(i + 1, edges):
+            c, d = inv_labels[j]
+            if a == c or a == d or b == c or b == d:
+                if not ((a == d and b == c) or (a == c and b == d)):
+                    output[i][j], output[j][i] = 1, 1
+    return edge_labels, inv_labels, output
+
+def get_complement_graph(A):
+    G_input = nx.from_numpy_matrix(A)
+    return nx.to_numpy_matrix(nx.complement(G_input))
 def compose(f, n):
     def fn(x):
         for _ in range(n):
@@ -377,9 +563,8 @@ def symmetry_toy():
         A[i][7], A[7][i] = 1, 1
     A[5][6], A[6][5] = 1, 1
     return A
-def optimize(A, beta, iterations, scoreFunc, flipFunc, minimize = True, A_target = None):
+def optimize(A, beta, iterations, scoreFunc, flipFunc, minimize = True, A_target = None, line_graph = False):
     bestVal = float('inf')
-    bestVals = []
     collecting = False
     curr = deepcopy(A)
     best = deepcopy(A)
@@ -387,23 +572,34 @@ def optimize(A, beta, iterations, scoreFunc, flipFunc, minimize = True, A_target
     if not minimize:
         factor = -1
     for i in range(iterations):
-        currScore = factor * scoreFunc(curr, beta, A_target)
+        if line_graph:
+            components, comp_mappings, edge_labels, inv_labels = scoreFunc(curr, beta, A_target)
+            score = factor * len(components)
+        else:
+            score = scoreFunc(curr, beta, A_target)
+        currScore = factor * score
         if currScore < bestVal and isConnected(curr):
             bestVal = currScore
-            best = deepcopy(curr)
-            collecting = True
-        if collecting:
-            bestVals.append(bestVal)
-        curr = compose(flipFunc, 1)(best)
+            if line_graph:
+                best = deepcopy(curr), components, comp_mappings, edge_labels, inv_labels
+            else:
+                best = deepcopy(curr)
+        if line_graph:
+            curr = compose(flipFunc, seeded_rng.randint(2 * len(A)))(best[0])
+        else:
+            curr = compose(flipFunc, seeded_rng.randint(2 * len(A)))(best)
         count = 0
         while not isConnected(curr):
-            curr = compose(flipFunc, 1)(best)
+            if line_graph:
+                curr = compose(flipFunc, seeded_rng.randint(2 * len(A)))(best[0])
+            else:
+                curr = compose(flipFunc, seeded_rng.randint(2 * len(A)))(best)
             count += 1
             if count > 30:
-                return bestVal, factor * np.array(bestVals), best
-        print(str(i)+"\t"+str(currScore))
+                return bestVal, best
+        print(str(i)+"\t"+str(currScore)+"\t"+str(bestVal))
     print(str(bestVal)+"\t BEST VAL!")
-    return bestVal, factor * np.array(bestVals), best
+    return bestVal,  best
 
 def generate_key_sequence(network, letters, iterations):
     dictionary = create_dictionary(letters)
@@ -436,70 +632,217 @@ def colorFader(c1,c2,mix=0): #fade (linear interpolate) from color c1 (at mix=0)
     c1=np.array(mpl.colors.to_rgb(c1))
     c2=np.array(mpl.colors.to_rgb(c2))
     return mpl.colors.to_hex((1-mix)*c1 + mix*c2)
+if __name__ == '__main__':
+    P_0 = normalize(modular_toy_paper())
+    eta = np.exp(-.05)
+    iu = np.triu_indices(15, k = 1)
+    J = np.ones((15,15))
+    I = np.identity(15)
+    print(cost_func(P_0, P_0, eta, J, I))
+    print(cost_func_zipped(P_0[iu], P_0, eta, J ,I))
+    print(cost_func(P_0, biased_modular(.25,.8), eta, J, I))
+    bounds = [(0, 1) for i in range(105)]
+    outcome = op.differential_evolution(cost_func_zipped, bounds = bounds, args = (P_0, eta, J, I), tol = 1e-6 , workers = -1, disp = True, maxiter = 25000)
+    #outcome = op.basinhopping(cost_func_zipped, np.ones(105), disp = True, minimizer_kwargs={"jac":grad_zipped, "method": "L-BFGS-B", "args" : (P_0, eta, J, I), "bounds":bounds})
+    A = np.zeros((15,15))
+    A[iu] = outcome.x
+    A = np.maximum(A, A.T)
+    score = KL_score_external(A, .05, P_0)
+    scores_original = KL_score(modular_toy_paper(), .05)
+    print(str(.3)+"\t"+str(normalize(A)) +"\t"+str(score))
+    P_f = normalize(A)
+    print(KL_score_external(P_f, .05, modular_toy_paper()))
+    plt.figure(1)
+    cmap = plt.get_cmap("hot_r")
+    norm = mpl.colors.Normalize(vmin=0, vmax=.25)
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    G_0 = nx.from_numpy_matrix(P_0)
+    graph_pos = nx.spring_layout(G_0, iterations=50)
+    edgewidth = [(4*d['weight']) for (u, v, d) in G_0.edges(data=True)]
+    edgecolor =[cmap(4 * d['weight']) for (u, v, d) in G_0.edges(data=True)]
+    nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+    nx.draw_networkx_edges(G_0, graph_pos,  edge_color= edgecolor, width = edgewidth)
+    plt.colorbar(sm, ticks=np.linspace(0,.25, 6))
+
+    plt.figure(2)
+    G_f = nx.from_numpy_matrix(P_f)
+    edgewidth = [(4*d['weight']) for (u, v, d) in G_f.edges(data=True)]
+    edgecolor =[cmap(4 * d['weight']) for (u, v, d) in G_f.edges(data=True)]
+    nx.draw_networkx(G_f, graph_pos, width=np.zeros(N_internal))
+    nx.draw_networkx_edges(G_f, graph_pos,  edge_color= edgecolor, width = edgewidth)
+    plt.colorbar(sm, ticks=np.linspace(0, .25, 6))
+
+    pk.dump(P_f, open(r"optimal_modular_25k_point05.pickle", "wb"))
+    #
+    # print(P_f[1][0])
+    # print(P_f[1][2])
+    # print(P_f[3][4])
+    # betas = np.linspace(1e-8, 3, 100)
+    # params = np.zeros((len(betas), 2))
+    # scores = np.zeros(len(betas))
+    # scores_original = np.zeros(len(betas))
+    #
+    # for i in range(len(betas)):
+    #     outcome = op.minimize(KL_score_ext_zipped, [1, 1], method='Nelder-Mead', args=(betas[i],), tol=1e-10,
+    #                           options={"maxiter": 1000})
+    #     params[i] = np.array(outcome.x)
+    #     scores[i] = KL_score_ext_zipped(outcome.x, betas[i])
+    #     scores_original[i] = KL_score(modular_toy_paper(), betas[i])
+    #     print(str(betas[i]) + "\t" + str(outcome.x) + "\t" + str(scores[i]))
+    #
+    # print(KL_score_external(modular_toy_paper(), .3, modular_toy_paper()))
+    #
+    # plt.figure(3)
+    # plt.scatter(betas, params[:, 0], label="cross-cluster bias", s=15)
+    # plt.scatter(betas, params[:, 1], label="boundary bias", s=15)
+    # plt.legend()
+    #
+    # plt.figure(4)
+    # plt.plot(betas, scores, label="optimized")
+    # plt.plot(betas, scores_original, label="original")
+    # plt.legend()
+    # plt.figure(5)
+    # plt.plot(betas, scores / scores_original)
+    #
+    # cmap = plt.get_cmap("hot_r")
+    # norm = mpl.colors.Normalize(vmin=0,vmax=.25)
+    # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    # sm.set_array([])
+    # plt.figure(6)
+    # G_f = nx.from_numpy_matrix(normalize(biased_modular(params[9][0], params[9][1])))
+    # edgewidth = [(5 * d['weight'])  for (u, v, d) in G_f.edges(data=True)]
+    # graph_pos = nx.spring_layout(G_f, iterations = 50)
+    # nx.draw_networkx(G_f, graph_pos, width=np.zeros(N_internal))
+    # nx.draw_networkx_edges(G_f, graph_pos, width=edgewidth)
+    # plt.colorbar(sm, ticks=np.linspace(0, .25, 6))
+    #
+    # print(pd.DataFrame(normalize(biased_modular(params[9][0], params[9][1]))))
+    #
+    # pk.dump([betas, params, scores, scores_original], open(r"Modular Symmetry-Reduced Optimized Per Beta.pickle","wb"))
+    # # print(KL_score_external(biased_modular(.25,.8), .3, modular_toy_paper()))
+    # P_0 = normalize(modular_toy_paper())
+    # # P_f = pk.load(open(r"optimal_modular_point3.pickle", "rb"))
+    # P_f = descend_X(P_0, .3, 1e-1, 100000)
+    #
+    # plt.figure(0)
+    # cmap = plt.get_cmap("hot_r")
+    # norm = mpl.colors.Normalize(vmin=0,vmax=.25)
+    # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    # sm.set_array([])
+    # G_0 = nx.from_numpy_matrix(P_0)
+    # graph_pos = nx.spring_layout(G_0, iterations=50)
+    # edgewidth = [4 * d['weight'] for (u, v, d) in G_0.edges(data=True)]
+    # edgecolor =[cmap(4 * d['weight']) for (u, v, d) in G_0.edges(data=True)]
+    # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+    # nx.draw_networkx_edges(G_0, graph_pos,  edge_color= edgecolor)
+    # plt.colorbar(sm, ticks=np.linspace(0,.25, 6))
+    #
+    # plt.figure(1)
+    # G_f = nx.from_numpy_matrix(P_f)
+    # graph_pos = nx.spring_layout(G_0, iterations=50)
+    # edgewidth = [4 * d['weight'] for (u, v, d) in G_f.edges(data=True)]
+    # edgecolor =[cmap(4 * d['weight']) for (u, v, d) in G_f.edges(data=True)]
+    # nx.draw_networkx(G_f, graph_pos, width=np.zeros(N_internal))
+    # nx.draw_networkx_edges(G_f, graph_pos, edge_color= edgecolor, width = edgewidth)
+    # plt.colorbar(sm, ticks=np.linspace(0,.25, 6))
+    #
+    #
+    # print(KL_score_external(P_f, .3, modular_toy_paper()))
+    # print(KL_score(modular_toy_paper(), .3))
+    # pk.dump(P_f, open(r"optimal_modular_descendX.pickle", "wb"))
+
+    # G_0 = create_undirected_network(15, 30)
+    # bestVal, best = optimize(G_0, .3, 100000, automorphism_count, flipEdge, line_graph= False, minimize= False)
+    #
+    # edge_labels, inv_labels, output = compute_line_graph_details(best, 30)
+    # components, mappings = get_structurally_symmetric(output)
+    # print(components)
+    #
+    # plt.figure(1)
+    # G = nx.from_numpy_matrix(best)
+    # nx.draw_networkx(G)
 
 
-A_target = modular_toy_paper()
+    '''
+    A_target = modular_toy_paper()
+    
+    beta_range = np.linspace(1e-6, 2, 500)
+    lambda_range = np.linspace(1e-6, 2, 500)
+    results = np.zeros((len(beta_range), len(lambda_range)))
+    results = pk.load(open(r"beta-lambda-heatmap micro up to 2, multiplicative.pickle", "rb"))
+    # for i in range(len(beta_range)):
+    #     print(i)
+    #     for j in range(len(lambda_range)):
+    #         A_init = biased_modular(lambda_range[j])
+    #         score = KL_score_external(A_init, beta_range[i], A_target)/KL_score(A_target, beta_range[i])
+    #         results[i][j] = score
+    '''
 
-beta_range = np.linspace(1e-6, 2, 500)
-lambda_cc_range = np.linspace(1e-6, 2, 500)
-lambda_b_range = np.linspace(1e-6, 2, 500)
-results = np.zeros((len(lambda_cc_range), len(lambda_b_range)))
-results2 = np.zeros((len(lambda_cc_range), len(lambda_b_range)))
-results = pk.load(open(r"beta-lambda-heatmap micro up to 2, .1, boundary edges diff.pickle", "rb"))
-results2 = pk.load(open(r"beta-lambda-heatmap micro up to 2, .1, boundary edges ratio.pickle", "rb"))
-# for i in range(len(lambda_cc_range)):
-#     print(i)
-#     for j in range(len(lambda_b_range)):
-#         A_init = biased_modular(lambda_cc_range[i], lambda_b_range[j])
-#         score_ext = KL_score_external(A_init, 5, A_target)
-#         score_baseline = KL_score(A_target, 5)
-#         results[i][j] = score_ext - score_baseline
-#         results2[i][j] = score_ext/score_baseline
-
-# row, col = np.unravel_index(results2.argmin(), results2.shape)
-# results2[row][col] = 100
-plt.figure(1)
-plt.imshow(results, cmap = 'RdBu',extent=[.01, 2, .01, 2], origin='lower', aspect = 1, norm = mn.MidpointNormalize(midpoint=0))
-plt.title(r"$D_{KL}(A || f(A^*))-D_{KL}(A || f(A))$", size = 16)
-plt.xlabel(r"$\lambda_b$", size = 16)
-plt.ylabel(r"$\lambda _{cc}$", size = 16)
-plt.colorbar()
-
-plt.figure(5)
-plt.imshow(results2, cmap = 'RdBu',extent=[.01, 2, .01, 2], origin='lower', vmax = 1.3, vmin = .8, aspect = 1, norm = mn.MidpointNormalize(midpoint=1))
-plt.title(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size = 16)
-plt.xlabel(r"$\lambda_b$", size = 16)
-plt.ylabel(r"$\lambda _{cc}$", size = 16)
-plt.colorbar()
-
-plt.figure(2)
-for i in range(0, len(lambda_cc_range), 25):
-    #plt.ylim([0.6, 2])
-    plt.plot(lambda_cc_range, results2[:, i], label = r"$\lambda_{b} =$"+str(lambda_b_range[i])[0:4], linewidth = .8, color =
-    colorFader('red', 'green', np.power(i/len(lambda_cc_range), .75)))
-plt.xlabel(r"$\lambda_{cc}$", size = 16)
-plt.ylabel(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size = 16)
-plt.legend(prop={'size': 8}, loc = 1, ncol = 2)
-plt.tight_layout()
-
-#minimums
-lambda_b_vals = np.zeros(len(lambda_cc_range) - 1)
-score_vals = np.zeros(len(lambda_cc_range) - 1)
-for i in range(1, len(results)):
-    argmin = np.argmin(results[i])
-    lambda_b_vals[i-1] = lambda_b_range[argmin]
-    score_vals[i-1] = results[i][argmin]
-plt.figure(3)
-plt.plot(lambda_cc_range[1:], score_vals, color = "orange")
-plt.xlabel(r"$\lambda_{cc}$", size = 16)
-plt.ylabel(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size = 16)
-plt.tight_layout()
-
-plt.figure(4)
-plt.plot(lambda_cc_range[1:], lambda_b_vals, color = "orange")
-plt.xlabel(r"$\lambda_{cc}$", size = 16)
-plt.ylabel(r"$\lambda_{b} ^*$", size = 16)
-plt.tight_layout()
-
-
-plt.show()
+    '''
+    beta_range = np.linspace(1e-6, 2, 500)
+    lambda_cc_range = np.linspace(1e-6, 2, 500)
+    lambda_b_range = np.linspace(1e-6, 2, 500)
+    # results = np.zeros((len(lambda_cc_range), len(lambda_b_range)))
+    # results2 = np.zeros((len(lambda_cc_range), len(lambda_b_range)))
+    results = pk.load(open(r"beta-lambda-heatmap micro up to 2, 5, boundary edges ratio.pickle", "rb"))
+    # for i in range(len(lambda_cc_range)):
+    #     print(i)
+    #     for j in range(len(lambda_b_range)):
+    #         A_init = biased_modular(lambda_cc_range[i], lambda_b_range[j])
+    #         score_ext = KL_score_external(A_init, .01, A_target)
+    #         score_baseline = KL_score(A_target, .01)
+    #         results[i][j] = score_ext - score_baseline
+    #         results2[i][j] = score_ext/score_baseline
+    
+    # row, col = np.unravel_index(results2.argmin(), results2.shape)
+    # results2[row][col] = 100
+    
+    # plt.figure(1)
+    # plt.imshow(results, cmap = 'RdBu',extent=[.01, 2, .01, 2], origin='lower', aspect = 1, norm = mn.MidpointNormalize(midpoint=0))
+    # plt.title(r"$D_{KL}(A || f(A^*))-D_{KL}(A || f(A))$", size = 16)
+    # plt.xlabel(r"$\lambda_b$", size = 16)
+    # plt.ylabel(r"$\lambda _{cc}$", size = 16)
+    # cbar = plt.colorbar()
+    
+    plt.figure(5)
+    plt.imshow(results, cmap = 'RdBu',extent=[.01, 2, .01, 2], origin='lower', aspect = 1,vmin = .95, vmax = 1.05, norm = mn.MidpointNormalize(midpoint=1))
+    plt.title(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size = 16)
+    plt.xlabel(r"$\lambda_b$", size = 16)
+    plt.ylabel(r"$\lambda _{cc}$", size = 16)
+    cbar = plt.colorbar()
+    cbar.ax.set_yticklabels(['< .96', '.98', '1', '1.02', '> 1.04'])
+    
+    plt.figure(2)
+    for i in range(0, len(lambda_cc_range), 25):
+        #plt.ylim([0.6, 2])
+        plt.plot(lambda_cc_range, results[:, i], label = r"$\lambda_{b} =$"+str(lambda_b_range[i])[0:4], linewidth = .8, color =
+        colorFader('red', 'green', np.power(i/len(lambda_cc_range), .75)))
+    plt.xlabel(r"$\lambda_{cc}$", size = 16)
+    plt.ylabel(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size = 16)
+    plt.legend(prop={'size': 8}, loc = 1, ncol = 2)
+    plt.tight_layout()
+    
+    #minimums
+    lambda_b_vals = np.zeros(len(lambda_cc_range) - 1)
+    score_vals = np.zeros(len(lambda_cc_range) - 1)
+    for i in range(1, len(results)):
+        argmin = np.argmin(results[i])
+        lambda_b_vals[i-1] = lambda_b_range[argmin]
+        score_vals[i-1] = results[i][argmin]
+    plt.figure(3)
+    plt.plot(lambda_cc_range[1:], score_vals, color = "orange")
+    plt.xlabel(r"$\lambda_{cc}$", size = 16)
+    plt.ylabel(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size = 16)
+    plt.tight_layout()
+    
+    plt.figure(4)
+    plt.plot(lambda_cc_range[1:], lambda_b_vals, color = "orange")
+    plt.xlabel(r"$\lambda_{cc}$", size = 16)
+    plt.ylabel(r"$\lambda_{b} ^*$", size = 16)
+    plt.tight_layout()
+    
+    # pk.dump(results, open(r"beta-lambda-heatmap micro up to 2, .3 reversed, boundary edges diff.pickle", "wb"))
+    # pk.dump(results2, open(r"beta-lambda-heatmap micro up to 2, .3 reversed, boundary edges ratio.pickle", "wb"))
+    '''
+    plt.show()
