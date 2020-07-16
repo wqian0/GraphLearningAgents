@@ -748,61 +748,64 @@ def colorFader(c1,c2,mix=0): #fade (linear interpolate) from color c1 (at mix=0)
 if __name__ == '__main__':
     A_target = modular_toy_paper()
 
-    beta_range = np.linspace(1e-3, 2, 500)
-    lambda_cc_range = np.linspace(1e-3, 2, 500)
-    lambda_b_range = np.linspace(1e-3, 2, 500)
-    results = np.zeros((len(lambda_cc_range), len(lambda_b_range)))
-    for i in range(len(beta_range)):
-        print(i)
-        for j in range(len(lambda_cc_range)):
-            A_init = biased_modular(lambda_cc_range[j], 1)
-            A_learned = learn(A_init, beta_range[i])
-            #score_ext = KL_score_external(A_init, beta_range[i], A_target)
-            #score_baseline = KL_score(A_target, beta_range[i])
-            #results[i][j] = score_ext/score_baseline
-            results[i][j] = uniformity_cost(A_target, A_learned)
+    # beta_range = np.linspace(1e-3, 2, 500)
+    # lambda_cc_range = np.linspace(1e-3, 2, 500)
+    # lambda_b_range = np.linspace(1e-3, 2, 500)
+    # results = np.zeros((len(lambda_cc_range), len(lambda_b_range)))
+    # beta = .05
+    # for i in range(len(lambda_cc_range)):
+    #     print(i)
+    #     for j in range(len(lambda_b_range)):
+    #         A_init = biased_modular(lambda_cc_range[i], lambda_b_range[j])
+    #         A_learned = learn(A_init, beta)
+    #         #score_ext = KL_score_external(A_init, beta_range[i], A_target)
+    #         #score_baseline = KL_score(A_target, beta_range[i])
+    #         #results[i][j] = score_ext/score_baseline
+    #         results[i][j] = uniformity_cost(A_target, A_learned)
 
 
-    pk.dump([beta_range, lambda_cc_range, results], open("Uniformity Cost beta-lambda heatmap.pickle", "wb"))
+    cc_range, b_range, results = pk.load(open("Uniformity Cost lambda-lambda heatmap 5 (lambdaccrange, lambdabrange, results).pickle", "rb"))
     # row, col = np.unravel_index(results2.argmin(), results2.shape)
     # results2[row][col] = 100
 
     plt.figure(5)
-    plt.imshow(results, cmap='hot', extent=[.01, 2, .01, 2], origin='lower',  aspect=1)
+    cax = plt.imshow(results, cmap='RdBu', extent=[.01, 2, .01, 2], origin='lower', vmax = 2, aspect=1)
     plt.title("Uniformity Cost", size=16)
-    plt.ylabel(r"$\beta$", size=16)
-    plt.xlabel(r"$\lambda _{cc}$", size=16)
-    plt.colorbar()
+    plt.xlabel(r"$\lambda_{b}$", size=16)
+    plt.ylabel(r"$\lambda _{cc}$", size=16)
+    #plt.colorbar(cax)
+    cbar = plt.colorbar(cax, ticks = [.4,.8, 1.2, 1.6, 2])
+    cbar.ax.set_yticklabels(['.4','.8', '1.2', '1.6', '>2'])
 
-    plt.figure(2)
-    for i in range(0, len(lambda_cc_range), 25):
-        # plt.ylim([0.6, 2])
-        plt.plot(lambda_cc_range, results[:, i], label=r"$\beta =$" + str(beta_range[i])[0:4], linewidth=.8,
-                 color=
-                 colorFader('red', 'green', np.power(i / len(lambda_cc_range), .75)))
-    plt.xlabel(r"$\lambda_{cc}$", size=16)
-    plt.ylabel("Uniformity Cost", size=16)
-    plt.legend(prop={'size': 8}, loc=1, ncol=2)
-    plt.tight_layout()
-
-    # minimums
-    lambda_cc_vals = np.zeros(len(lambda_cc_range))
-    score_vals = np.zeros(len(lambda_cc_range))
-    for i in range(len(results)):
-        argmin = np.argmin(results[i])
-        lambda_cc_vals[i] = lambda_cc_range[argmin]
-        score_vals[i] = results[i][argmin]
-    plt.figure(3)
-    plt.plot(beta_range, score_vals, color="orange")
-    plt.xlabel(r"$\beta$", size=16)
-    plt.ylabel("Uniformity Cost", size=16)
-    plt.tight_layout()
-
-    plt.figure(4)
-    plt.plot(beta_range, lambda_cc_vals, color="orange")
-    plt.xlabel(r"$\beta$", size=16)
-    plt.ylabel(r"$\lambda_{cc} ^*$", size=16)
-    plt.tight_layout()
+    # plt.figure(2)
+    # for i in range(0, len(lambda_cc_range), 25):
+    #     # plt.ylim([0.6, 2])
+    #     plt.plot(lambda_cc_range, results[:, i], label=r"$\beta =$" + str(beta_range[i])[0:4], linewidth=.8,
+    #              color=
+    #              colorFader('red', 'green', np.power(i / len(lambda_cc_range), .75)))
+    # plt.xlabel(r"$\lambda_{cc}$", size=16)
+    # plt.ylabel("Uniformity Cost", size=16)
+    # plt.legend(prop={'size': 8}, loc=1, ncol=2)
+    # plt.tight_layout()
+    #
+    # # minimums
+    # lambda_cc_vals = np.zeros(len(lambda_cc_range))
+    # score_vals = np.zeros(len(lambda_cc_range))
+    # for i in range(len(results)):
+    #     argmin = np.argmin(results[i])
+    #     lambda_cc_vals[i] = lambda_cc_range[argmin]
+    #     score_vals[i] = results[i][argmin]
+    # plt.figure(3)
+    # plt.plot(beta_range, score_vals, color="orange")
+    # plt.xlabel(r"$\beta$", size=16)
+    # plt.ylabel("Uniformity Cost", size=16)
+    # plt.tight_layout()
+    #
+    # plt.figure(4)
+    # plt.plot(beta_range, lambda_cc_vals, color="orange")
+    # plt.xlabel(r"$\beta$", size=16)
+    # plt.ylabel(r"$\lambda_{cc} ^*$", size=16)
+    # plt.tight_layout()
     '''
     beta = .05
     betas = np.linspace(1e-4, 1, 200)
