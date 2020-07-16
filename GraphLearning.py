@@ -684,7 +684,7 @@ def optimize(A, beta, iterations, scoreFunc, flipFunc, minimize = True, A_target
 def uniformity_cost(P_0, A):
     terms = A[P_0 > 0].flatten()
     diffs = np.subtract.outer(terms, terms)
-    return np.sum(diffs * diffs)
+    return np.sqrt(np.sum(diffs * diffs))
 
 def list_optimize(A_list, beta, iterations, scoreFunc, flipFunc, listSize, minimize = True, A_target = None, numParams = False):
     factor = -1
@@ -768,8 +768,8 @@ if __name__ == '__main__':
     # results2[row][col] = 100
 
     plt.figure(5)
-    plt.imshow(np.sqrt(results), cmap='hot', extent=[.01, 2, .01, 2], origin='lower',  aspect=1)
-    plt.title(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$", size=16)
+    plt.imshow(results, cmap='hot', extent=[.01, 2, .01, 2], origin='lower',  aspect=1)
+    plt.title("Uniformity Cost", size=16)
     plt.ylabel(r"$\beta$", size=16)
     plt.xlabel(r"$\lambda _{cc}$", size=16)
     plt.colorbar()
