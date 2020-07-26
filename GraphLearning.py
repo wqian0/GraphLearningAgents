@@ -41,7 +41,7 @@ rng = np.random.RandomState()
 #seeded_rng = np.random.RandomState(17310145)
 seeded_rng = rng
 N = 12
-N_internal = 24
+N_internal = 720
 sources = 10
 
 languages = "C:/Users/billy/PycharmProjects/GraphLearningAgents/graphs_Language_share/"
@@ -151,10 +151,11 @@ def KL_Div_Old(U, V):
             if not np.isclose(U[i][j], 0, rtol = 1e-16) and not np.isclose(V[i][j], 0, rtol = 1e-16):
                 result += pi[i] * U[i][j] * np.log(V[i][j]/U[i][j])
     return -result
+
 def KL_Divergence(U, V):
     U = normalize(U)
     V = normalize(V)
-    pi = get_stationary2(U)
+    pi = get_stationary3(U)
     combined = np.einsum('i, ij -> ij', pi, U)
     logged = np.log(V/U)
     logged[U == 0] = 0
@@ -483,9 +484,9 @@ def getSymReducedParams(A, include_nonexistent = True):
     return len(comps), parameterized
 
 
-def get_KL_ext_general(A_target):
-    numParams, parameterized = getSymReducedParams(A_target)
-    def cost_func(input, beta):
+def get_KL_ext_general(A_target, include_nonexistent = True):
+    numParams, parameterized = getSymReducedParams(A_target, include_nonexistent = include_nonexistent)
+    def cost_func(input, P_0, pi, beta, J, I):
         return KL_score_external(parameterized(input), beta, A_target)
     return numParams, cost_func, parameterized
 
@@ -521,21 +522,22 @@ def reduced_cost_func(input, comps, comps_c, inv_labels, inv_labels_c, beta, A_t
             B[row][col], B[col][row] = input[len(comps) + i], input[len(comps) + i]
     return KL_score_external(B, beta, A_target)
 
-def grad_zipped(input, P_0, pi, eta, J, I):
-    iu = np.triu_indices(15, k=1)
-    A = np.zeros((15, 15))
+def grad_zipped(input, P_0, pi, beta, J, I):
+    iu = np.triu_indices(len(P_0), k=1)
+    A = np.zeros((len(P_0), len(P_0)))
+    eta = np.exp(-beta)
     A[iu] = input
     A = np.maximum(A, A.T)
     output = gradient(P_0, pi, A, eta, J, I)
     return output[iu]
 
 
-def cost_func_zipped(input, P_0, pi, eta, J, I):
-    iu = np.triu_indices(N_internal, k=1)
-    A = np.zeros((N_internal, N_internal))
+def cost_func_zipped(input, P_0, pi, beta, J, I):
+    iu = np.triu_indices(len(P_0), k=1)
+    A = np.zeros((len(P_0), len(P_0)))
     A[iu] = input
     A = np.maximum(A, A.T)
-    cost = cost_func(P_0, pi, A, eta, J, I)
+    cost = cost_func(P_0, pi, A, beta, J, I)
     return cost
 
 def Q_inv(A, beta, depth):
@@ -545,16 +547,17 @@ def Q_inv(A, beta, depth):
         result += np.linalg.matrix_power(nu * A, i)
     return result
 
-def cost_func(P_0, pi, A, eta, J, I):
+def cost_func(P_0, pi, A, beta, J, I):
     AJ = A @ J
     P_f = A / AJ
     P_f[np.isnan(P_f)] = 0
+    eta = np.exp(-beta)
     Q = sp.linalg.inv(I - eta * P_f)
     prod = P_f @ Q
     M2 = np.log(prod/ P_0)
     M2[P_0 == 0] = 0
     combined = np.einsum('i, ij -> ij', pi, P_0)
-    return -np.trace(combined.T @ M2)
+    return -np.log(1-eta)-np.trace(combined.T @ M2)
 
 def gradient(P_0, pi, A, eta, J, I):
     AJ = A @ J
@@ -824,78 +827,108 @@ if __name__ == '__main__':
     # cbar = plt.colorbar(cax, ticks=[.2, .4, .6, .8, 1])
     # cbar.ax.set_yticklabels(['.2', '.4', '.6', '.8', '>1'])
 
-    #network0 = np.loadtxt(social+"G_karate.csv", delimiter=',')
+    network0 = np.loadtxt(music+"G_Toto.csv", delimiter=',')
+
+    beta = .05
+    pi = get_stationary3(network0)
+    J = np.ones((len(network0), len(network0)))
+    I = np.identity(len(network0))
+    #numParams, comps, comps_c, inv_labels, inv_labels_c = get_pickleable_params(network0, include_nonexistent= False)
 
     A_list = []
-    for i in [2,3,4,6]:
+    num_comms = [2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 18, 20, 24, 30, 36, 40, 45, 48, 60, 72, 80, 90, 120, 144, 180, 240]
+    optimal_vals = []
+    scores_original = []
+    scores_optimized = []
+
+    for i in num_comms:
+        print(i)
         network0 = modular_toys_general(N_internal, i, 1, 1)
         beta = .05
         eta = np.exp(-beta)
         J = np.ones((len(network0), len(network0)))
         I = np.identity(len(network0))
         pi = get_stationary3(network0)
-        bounds = [(0, 10) for i in range(2)]
-        #numParams, comps, comps_c, inv_labels, inv_labels_c = get_pickleable_params(network0, include_nonexistent= True)
-        #print(comps)
-        #numParams, parameterized = getSymReducedParams(network0, include_nonexistent= True)
+        bounds = [(0, 25) for i in range(2)]
+        # numParams, comps, comps_c, inv_labels, inv_labels_c = get_pickleable_params(network0, include_nonexistent= True)
+        # print(comps)
+        # numParams, parameterized = getSymReducedParams(network0, include_nonexistent= True)
         # outcome = op.differential_evolution(pickleable_cost_func, bounds=bounds, tol=1e-10, maxiter = 100000, workers=-1,
         #                                    args=(comps, comps_c, inv_labels, inv_labels_c, beta, network0, True), disp = True)
         # A = parameterized(list(outcome.x))
         # outcome = op.differential_evolution(cost_func_zipped, bounds = bounds, args = (normalize(network0), pi, eta, J, I), workers = -1, disp = True, maxiter = 100000, tol = 1e-10)
-        outcome = op.differential_evolution(KL_modular_toys_general, bounds= bounds, args = (N_internal, i, beta), workers = -1, disp = True, maxiter = 100000, tol = 1e-10)
+        #outcome = op.differential_evolution(KL_modular_toys_general, bounds=bounds, args=(N_internal, i, beta),
+        #                                    workers=-1, disp=True, maxiter=100000, tol=1e-10)
+        outcome = op.basinhopping(KL_modular_toys_general, seeded_rng.rand(2), niter= 200, niter_success= 100, minimizer_kwargs= {"args":(N_internal, i, beta), "bounds":bounds, "method": "L-BFGS-B"}, disp= True)
+        optimal_vals.append(outcome.x)
         A = modular_toys_general(N_internal, i, outcome.x[0], outcome.x[1])
         print(outcome.x)
 
-        print("YEET")
+        scores_original.append(KL_score(network0, beta))
+        scores_optimized.append(KL_score_external(A, beta, network0))
         print(KL_score_external(A, beta, network0), KL_score(network0, beta))
 
         network0 = normalize(network0)
-        plt.figure(0)
-        cmap = plt.get_cmap("binary")
-        norm = mpl.colors.Normalize(vmin=0, vmax=1)
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-        sm.set_array([])
-        G_0 = nx.from_numpy_matrix(network0)
-        graph_pos = nx.spring_layout(G_0, iterations = 100)
-        edgewidth = [max(.25 ,4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
-        nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-        #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
-
-
-        plt.figure(1)
-        learned_0 = learn(network0, beta)
-        G_0 = nx.from_numpy_matrix(learned_0)
-        edgewidth = [max(.25 ,4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
-        nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-        #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
-
-
-        plt.figure(2)
-        G_0 = nx.from_numpy_matrix(A)
-        edgewidth = [max(.25 ,4 * (d['weight']) ) for (u, v, d) in G_0.edges(data=True)]
-        edgecolor =[cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
-        nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-        #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
-
-        plt.figure(3)
-        learned_A = learn(A, beta)
-        G_0 = nx.from_numpy_matrix(learned_A)
-        edgewidth = [max(.25 ,4 * (d['weight']) ) for (u, v, d) in G_0.edges(data=True)]
-        edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
-        nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-        #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+        # plt.figure(0)
+        # cmap = plt.get_cmap("binary")
+        # norm = mpl.colors.Normalize(vmin=0, vmax=1)
+        # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        # sm.set_array([])
+        # G_0 = nx.from_numpy_matrix(network0)
+        # graph_pos = nx.spring_layout(G_0, iterations=100)
+        # edgewidth = [max(.25, 4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+        # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+        # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+        # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+        # # plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+        #
+        # plt.figure(1)
+        # learned_0 = learn(network0, beta)
+        # G_0 = nx.from_numpy_matrix(learned_0)
+        # edgewidth = [max(.25, 4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+        # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+        # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+        # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+        # # plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+        #
+        # plt.figure(2)
+        # G_0 = nx.from_numpy_matrix(A)
+        # edgewidth = [max(.25, 4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+        # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+        # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+        # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+        # # plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+        #
+        # plt.figure(3)
+        # learned_A = learn(A, beta)
+        # G_0 = nx.from_numpy_matrix(learned_A)
+        # edgewidth = [max(.25, 4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+        # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+        # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+        # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+        # # plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
 
         # print(pd.DataFrame(network0))
         # print(pd.DataFrame(learned_0))
         # print(pd.DataFrame(A))
         # print(pd.DataFrame(learned_A))
         A_list.append(A)
-        plt.show()
+        #plt.show()
 
-    pk.dump(A_list, open("Karate .05.pickle","wb"))
+    optimal_vals = np.array(optimal_vals)
+    plt.figure()
+    plt.ylabel("KL Divergence")
+    plt.xlabel("Number of Modules")
+    plt.scatter(num_comms, scores_original, label = "Original")
+    plt.scatter(num_comms, scores_optimized, label = "Optimized")
+    plt.legend()
+
+
+    plt.figure()
+    plt.ylabel("Optimal Value")
+    plt.xlabel("Number of Modules")
+    plt.scatter(num_comms, optimal_vals[:, 0], label = "Cross-Cluster Weight")
+    plt.scatter(num_comms, optimal_vals[:, 1], label = "Boundary Weight")
+    plt.legend()
+    plt.show()
+    pk.dump([num_comms, optimal_vals, A_list, scores_original, scores_optimized], open("modular 720 .05, num_comms, optimal_vals, optimized_networks_list, scores_original, scores_optimized.pickle", "wb"))
