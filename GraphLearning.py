@@ -9,6 +9,7 @@ from matplotlib import colors
 from operator import itemgetter
 from graphviz import Digraph
 import os
+import pygmo as pg
 import heapq
 import tempfile
 import itertools
@@ -41,7 +42,7 @@ rng = np.random.RandomState()
 #seeded_rng = np.random.RandomState(17310145)
 seeded_rng = rng
 N = 12
-N_internal = 720
+N_internal = 24
 sources = 10
 
 languages = "C:/Users/billy/PycharmProjects/GraphLearningAgents/graphs_Language_share/"
@@ -60,47 +61,60 @@ def matrix(m, n, val):
         M.append(row)
     return np.array(M)
 
-def get_random_modular(n, modules, directedEdges, p, getCommInfo=False):
+def get_random_modular(n, modules, edges, p, getCommInfo=False):
     pairings = {}
     assignments = np.zeros(n, dtype = int)
+    cross_module_edges = []
     for i in range(modules):
         pairings[i] = []
-    adjMatrix = matrix(n, n, 0)
+    A = np.zeros((n,n))
     for i in range(n):
         randomModule = seeded_rng.randint(0, modules)
         pairings[randomModule].append(i)
         assignments[i] = randomModule
-
-    def add_modular_edge(module = -1):
-        if module == -1:
-            randomComm = seeded_rng.randint(0, modules)
-        else:
-            randomComm = module
+    for i in range(modules - 1):
+        if len(pairings[i]) < 3 or len(pairings[i+1]) < 3:
+            return None, None
+        e0, e1 = seeded_rng.choice(pairings[i], 1), seeded_rng.choice(pairings[i+1], 1)
+        A[e0, e1], A[e1, e0] = 1, 1
+        cross_module_edges.append((e0, e1))
+    def add_modular_edge():
+        randomComm = seeded_rng.randint(0, modules)
         while len(pairings[randomComm]) < 2:
             randomComm = seeded_rng.randint(0, modules)
-        selection = seeded_rng.choice(pairings[randomComm], 2, replace=True)
-        while adjMatrix[selection[0]][selection[1]] != 0:
+        selection = seeded_rng.choice(pairings[randomComm], 2, replace=False)
+        while A[selection[0], selection[1]] != 0:
             randomComm = seeded_rng.randint(0, modules)
             while len(pairings[randomComm]) < 2:
                 randomComm = seeded_rng.randint(0, modules)
-            selection = seeded_rng.choice(pairings[randomComm], 2, replace=True)
-        adjMatrix[selection[0]][selection[1]] += 1
+            selection = seeded_rng.choice(pairings[randomComm], 2, replace=False)
+        A[selection[0], selection[1]] += 1
+        A[selection[1], selection[0]] += 1
 
-    def add_random_edge(): #adds edge anywhere
+    def add_between_edge():
         randEdge = seeded_rng.choice(n, 2, replace=False)
-        while adjMatrix[randEdge[0]][randEdge[1]] != 0:
+        while A[randEdge[0], randEdge[1]] != 0 or assignments[randEdge[0]] == assignments[randEdge[1]]:
             randEdge = seeded_rng.choice(n, 2, replace=False)
-        adjMatrix[randEdge[0]][randEdge[1]] += 1
-    inModuleEdges = round(directedEdges * p)
-    randEdges = directedEdges - inModuleEdges
+        A[randEdge[0], randEdge[1]] += 1
+        A[randEdge[1], randEdge[0]] += 1
+        cross_module_edges.append(randEdge)
+    inModuleEdges = int(round(edges * p))
+    betweenEdges = edges - inModuleEdges - modules + 1
+    if betweenEdges < 0:
+        print("RIP NEGATIVE")
     for i in range(inModuleEdges):
         add_modular_edge()
-    for i in range(randEdges):
-        add_random_edge()
+    for i in range(betweenEdges):
+        add_between_edge()
+    def parameterized(cc_weight):
+        B = deepcopy(A)
+        for e in cross_module_edges:
+            B[e[0], e[1]], B[e[1], e[0]] = cc_weight, cc_weight
+        return B
     if getCommInfo:
-        return adjMatrix, pairings, assignments
+        return A, pairings, assignments
     else:
-        return adjMatrix
+        return A, parameterized
 
 def learn(A, beta):
     A = normalize(A)
@@ -151,7 +165,6 @@ def KL_Div_Old(U, V):
             if not np.isclose(U[i][j], 0, rtol = 1e-16) and not np.isclose(V[i][j], 0, rtol = 1e-16):
                 result += pi[i] * U[i][j] * np.log(V[i][j]/U[i][j])
     return -result
-
 def KL_Divergence(U, V):
     U = normalize(U)
     V = normalize(V)
@@ -490,6 +503,11 @@ def get_KL_ext_general(A_target, include_nonexistent = True):
         return KL_score_external(parameterized(input), beta, A_target)
     return numParams, cost_func, parameterized
 
+def get_KL_ext_mod(parameterized):
+    def cost(cc_weight, beta, A_target):
+        return KL_score_external(parameterized(cc_weight), beta, A_target)
+    return cost
+
 def get_pickleable_params(A, include_nonexistent = True):
     comps, comp_maps, edge_labels, inv_labels = unique_edges(A, 0)
     if include_nonexistent:
@@ -801,71 +819,97 @@ def colorFader(c1,c2,mix=0): #fade (linear interpolate) from color c1 (at mix=0)
     c2=np.array(mpl.colors.to_rgb(c2))
     return mpl.colors.to_hex((1-mix)*c1 + mix*c2)
 if __name__ == '__main__':
-    # A_target = modular_toy_paper()
-    #
-    # beta_range = np.linspace(1e-3, 2, 500)
-    # lambda_cc_range = np.linspace(1e-3, 2, 500)
-    # lambda_b_range = np.linspace(1e-3, 2, 500)
-    # results = np.zeros((len(lambda_cc_range), len(lambda_b_range)))
-    # beta = .5
-    # for i in range(len(lambda_cc_range)):
-    #     print(i)
-    #     for j in range(len(lambda_b_range)):
-    #         A_init = biased_modular(lambda_cc_range[i], lambda_b_range[j])
-    #         # score_ext = KL_score_external(A_init, beta_range[i], A_target)
-    #         # score_baseline = KL_score(A_target, beta_range[i])
-    #         # results[i][j] = score_ext/score_baseline
-    #         results[i][j] = frobenius_norm_cost(A_target, A_init, beta) / frobenius_norm_cost(A_target, A_target, beta)
-    #
-    # pk.dump([lambda_cc_range, lambda_b_range, results], open("frobenius Cost lambda-lambda heatmap 0.5.pickle", "wb"))
-    # plt.figure(5)
-    # cax = plt.imshow(results, cmap='RdBu', extent=[.01, 2, .01, 2], origin='lower', norm = mn.MidpointNormalize(midpoint=1), vmin = 0.9, vmax = 1.001, aspect=1)
-    # plt.title("Frobenius Cost", size=16)
-    # plt.ylabel(r"$\lambda_{cc}$", size=16)
-    # plt.xlabel(r"$\lambda _{b}$", size=16)
-    # plt.colorbar(cax)
-    # cbar = plt.colorbar(cax, ticks=[.2, .4, .6, .8, 1])
-    # cbar.ax.set_yticklabels(['.2', '.4', '.6', '.8', '>1'])
-
-    network0 = np.loadtxt(music+"G_Toto.csv", delimiter=',')
-
+    lambda_cc_range = np.linspace(1e-3, 1, 200)
+    mod_range = np.linspace(1e-3, .9, 200)
     beta = .05
-    pi = get_stationary3(network0)
-    J = np.ones((len(network0), len(network0)))
-    I = np.identity(len(network0))
-    #numParams, comps, comps_c, inv_labels, inv_labels_c = get_pickleable_params(network0, include_nonexistent= False)
-
-    A_list = []
-    num_comms = [2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 18, 20, 24, 30, 36, 40, 45, 48, 60, 72, 80, 90, 120, 144, 180, 240]
-    optimal_vals = []
-    scores_original = []
-    scores_optimized = []
-
-    for i in num_comms:
+    heatmap_avg = np.zeros((len(lambda_cc_range), len(mod_range)))
+    trials = 25
+    for i in range(len(lambda_cc_range)):
         print(i)
+        for j in range(len(mod_range)):
+            for k in range(trials):
+                A_target, parameterized = get_random_modular(N_internal, 4, 50, mod_range[j])
+                while A_target is None:
+                    A_target, parameterized = get_random_modular(N_internal, 4, 50, mod_range[j])
+                cost = get_KL_ext_mod(parameterized)
+                heatmap_avg[i][j] += cost(lambda_cc_range[i], beta, A_target)/ KL_score(A_target, beta)
+    heatmap_avg /= trials
+
+    plt.imshow(heatmap_avg, cmap='RdBu', extent=[1e-3, .9, .01, 1], origin='lower',vmin = .9, vmax = 1.1, interpolation = 'none', norm = mn.MidpointNormalize(midpoint=1), aspect=.9)
+    plt.colorbar()
+    plt.title(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$",size=16)
+    plt.xlabel("Fraction of edges in modules", size = 16)
+    plt.ylabel(r"$\lambda _{cc}$", size=16)
+
+    plt.figure()
+    for i in range(0, len(mod_range), 10):
+        plt.plot(lambda_cc_range, heatmap_avg[:, i], label = str(mod_range[i])[0:5])
+    plt.xlabel(r"$\lambda _{cc}$", size=16)
+    plt.ylabel(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$",size=16)
+    plt.legend()
+    pk.dump([lambda_cc_range, mod_range, heatmap_avg], open("lam_cc_range, mod_range, heatmap_avg, 25 trials, 0.05.pickle","wb"))
+    plt.show()
+    '''
+    A_target = modular_toy_paper()
+
+    #beta_range = np.linspace(1e-3, 2, 500)
+    lambda_cc_range = np.linspace(1e-3, 3, 500)
+    lambda_b_range = np.linspace(1e-3, 3, 500)
+    for c in [2,3,4,6]:
+        A_target = modular_toys_general(N_internal, c, 1, 1)
+        results = np.zeros((len(lambda_cc_range), len(lambda_b_range)))
+        beta = .01
+        for i in range(len(lambda_cc_range)):
+            print(i)
+            for j in range(len(lambda_b_range)):
+                A_init = modular_toys_general(N_internal, c, lambda_cc_range[i], lambda_b_range[j])
+                #score_ext = KL_score_external(A_init, beta, A_target)
+                #score_baseline = KL_score(A_target, beta)
+                #results[i][j] = score_ext/score_baseline
+                results[i][j] = uniformity_cost(A_target, A_init, beta) / uniformity_cost(A_target, A_target, beta)
+
+        pk.dump([lambda_cc_range, lambda_b_range, results], open("uniformity Cost lambda-lambda heatmap 24 nodes .01,"+str(c)+" comms.pickle", "wb"))
+        plt.figure(c)
+        cax = plt.imshow(results, cmap='RdBu', extent=[.01, 3, .01, 3], origin='lower', vmax = 1.5hes, norm = mn.MidpointNormalize(midpoint=1), aspect=1)
+        #plt.title(r"$D_{KL}(A || f(A^*))-D_{KL}(A || f(A))$"+", "+str(c)+" modules", size=16)
+        plt.title("Uniformity Cost,"+str(c)+" modules", size = 16)
+        plt.xlabel(r"$\lambda_b$", size=16)
+        plt.ylabel(r"$\lambda _{cc}$", size=16)
+        cbar = plt.colorbar(cax)
+        #cbar = plt.colorbar(cax, ticks=[.2, .4, .6, .8, 1])
+        #cbar.ax.set_yticklabels(['.2', '.4', '.6', '.8', '>1'])
+    plt.show()
+    '''
+    '''
+    A_list = []
+    scores = []
+    scores_original = []
+    optimal_vals = []
+    num_modules = [2,3,4,6]
+    for i in num_modules:
         network0 = modular_toys_general(N_internal, i, 1, 1)
         beta = .05
         eta = np.exp(-beta)
         J = np.ones((len(network0), len(network0)))
         I = np.identity(len(network0))
         pi = get_stationary3(network0)
-        bounds = [(0, 25) for i in range(2)]
-        # numParams, comps, comps_c, inv_labels, inv_labels_c = get_pickleable_params(network0, include_nonexistent= True)
-        # print(comps)
-        # numParams, parameterized = getSymReducedParams(network0, include_nonexistent= True)
+        bounds = [(0, 10) for i in range(2)]
+        #numParams, comps, comps_c, inv_labels, inv_labels_c = get_pickleable_params(network0, include_nonexistent= True)
+        #print(comps)
+        #numParams, parameterized = getSymReducedParams(network0, include_nonexistent= True)
         # outcome = op.differential_evolution(pickleable_cost_func, bounds=bounds, tol=1e-10, maxiter = 100000, workers=-1,
         #                                    args=(comps, comps_c, inv_labels, inv_labels_c, beta, network0, True), disp = True)
         # A = parameterized(list(outcome.x))
-        # outcome = op.differential_evolution(cost_func_zipped, bounds = bounds, args = (normalize(network0), pi, eta, J, I), workers = -1, disp = True, maxiter = 100000, tol = 1e-10)
-        #outcome = op.differential_evolution(KL_modular_toys_general, bounds=bounds, args=(N_internal, i, beta),
-        #                                    workers=-1, disp=True, maxiter=100000, tol=1e-10)
-        outcome = op.basinhopping(KL_modular_toys_general, seeded_rng.rand(2), niter= 200, niter_success= 100, minimizer_kwargs= {"args":(N_internal, i, beta), "bounds":bounds, "method": "L-BFGS-B"}, disp= True)
-        optimal_vals.append(outcome.x)
+
+        outcome = op.differential_evolution(KL_modular_toys_general, bounds= bounds, args = (N_internal, i, beta), workers = 5, disp = True, maxiter = 10000, tol = 1e-10)
+        #outcome = op.basinhopping(KL_modular_toys_general, seeded_rng.rand(2) * 10, minimizer_kwargs={"args":(N_internal, i, beta), "bounds":bounds}, niter = 10000, niter_success= 500, disp = True)
         A = modular_toys_general(N_internal, i, outcome.x[0], outcome.x[1])
         print(outcome.x)
-
+        scores.append(KL_score_external(A, beta, network0))
         scores_original.append(KL_score(network0, beta))
-        scores_optimized.append(KL_score_external(A, beta, network0))
+        optimal_vals.append(outcome.x)
+
+        print("YEET")
         print(KL_score_external(A, beta, network0), KL_score(network0, beta))
 
         network0 = normalize(network0)
@@ -875,38 +919,40 @@ if __name__ == '__main__':
         # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         # sm.set_array([])
         # G_0 = nx.from_numpy_matrix(network0)
-        # graph_pos = nx.spring_layout(G_0, iterations=100)
-        # edgewidth = [max(.25, 4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+        # graph_pos = nx.spring_layout(G_0, iterations = 100)
+        # edgewidth = [max(.25 ,4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
         # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
         # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
         # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-        # # plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+        # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+        #
         #
         # plt.figure(1)
         # learned_0 = learn(network0, beta)
         # G_0 = nx.from_numpy_matrix(learned_0)
-        # edgewidth = [max(.25, 4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+        # edgewidth = [max(.25 ,4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
         # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
         # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
         # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-        # # plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+        # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+        #
         #
         # plt.figure(2)
         # G_0 = nx.from_numpy_matrix(A)
-        # edgewidth = [max(.25, 4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+        # edgewidth = [max(.25 ,4 * (d['weight']) ) for (u, v, d) in G_0.edges(data=True)]
+        # edgecolor =[cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
         # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
         # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-        # # plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+        # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
         #
         # plt.figure(3)
         # learned_A = learn(A, beta)
         # G_0 = nx.from_numpy_matrix(learned_A)
-        # edgewidth = [max(.25, 4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+        # edgewidth = [max(.25 ,4 * (d['weight']) ) for (u, v, d) in G_0.edges(data=True)]
         # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
         # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
         # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-        # # plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+        # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
 
         # print(pd.DataFrame(network0))
         # print(pd.DataFrame(learned_0))
@@ -915,20 +961,17 @@ if __name__ == '__main__':
         A_list.append(A)
         #plt.show()
 
+    plt.scatter(num_modules, scores, label = "optimized")
+    plt.scatter(num_modules, scores_original, label = "original")
+    plt.legend()
+    plt.figure()
     optimal_vals = np.array(optimal_vals)
-    plt.figure()
-    plt.ylabel("KL Divergence")
-    plt.xlabel("Number of Modules")
-    plt.scatter(num_comms, scores_original, label = "Original")
-    plt.scatter(num_comms, scores_optimized, label = "Optimized")
+    plt.scatter(num_modules, optimal_vals[:, 0], label = 'cross-cluster')
+    plt.scatter(num_modules, optimal_vals[:, 1], label = 'boundary')
     plt.legend()
 
-
     plt.figure()
-    plt.ylabel("Optimal Value")
-    plt.xlabel("Number of Modules")
-    plt.scatter(num_comms, optimal_vals[:, 0], label = "Cross-Cluster Weight")
-    plt.scatter(num_comms, optimal_vals[:, 1], label = "Boundary Weight")
-    plt.legend()
+    plt.scatter(num_modules, np.array(scores)/np.array(scores_original))
     plt.show()
-    pk.dump([num_comms, optimal_vals, A_list, scores_original, scores_optimized], open("modular 720 .05, num_comms, optimal_vals, optimized_networks_list, scores_original, scores_optimized.pickle", "wb"))
+    '''
+    #pk.dump(A_list, open("modular size 24 symreduced .05.pickle","wb"))
