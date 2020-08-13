@@ -730,6 +730,11 @@ def uniformity_cost(P_0, A, beta):
     diffs = np.subtract.outer(terms, terms)
     return np.sqrt(np.sum(diffs * diffs))
 
+def uniformity_cost_zipped(input, N_tot, N_comms, beta):
+    A = modular_toys_general(N_tot, N_comms, input[0], input[1])
+    return uniformity_cost(modular_toys_general(N_tot, N_comms, 1, 1), modular_toys_general(N_tot, N_comms, input[0], input[1]), beta)
+
+
 def modular_toys_general(N_tot, N_comms, cc_bias, b_bias):
     A = np.zeros((N_tot, N_tot))
     N_in = N_tot // N_comms
@@ -819,159 +824,81 @@ def colorFader(c1,c2,mix=0): #fade (linear interpolate) from color c1 (at mix=0)
     c2=np.array(mpl.colors.to_rgb(c2))
     return mpl.colors.to_hex((1-mix)*c1 + mix*c2)
 if __name__ == '__main__':
-    lambda_cc_range = np.linspace(1e-3, 1, 200)
-    mod_range = np.linspace(1e-3, .9, 200)
-    beta = .05
-    heatmap_avg = np.zeros((len(lambda_cc_range), len(mod_range)))
-    trials = 25
-    for i in range(len(lambda_cc_range)):
+
+    beta = 1
+    betas = np.linspace(1e-4, 2, 100)
+    scores = np.zeros(len(betas))
+    scores_original = np.zeros(len(betas))
+    network0 = normalize(modular_toys_general(15, 3, 1, 1))
+    outcomes = np.zeros((len(betas), 2))
+    pi = get_stationary3(network0)
+    bounds = [(1e-6, 20) for i in range(2)]
+    for i in range(len(betas)):
         print(i)
-        for j in range(len(mod_range)):
-            for k in range(trials):
-                A_target, parameterized = get_random_modular(N_internal, 4, 50, mod_range[j])
-                while A_target is None:
-                    A_target, parameterized = get_random_modular(N_internal, 4, 50, mod_range[j])
-                cost = get_KL_ext_mod(parameterized)
-                heatmap_avg[i][j] += cost(lambda_cc_range[i], beta, A_target)/ KL_score(A_target, beta)
-    heatmap_avg /= trials
+        outcome = op.differential_evolution(uniformity_cost_zipped, bounds = bounds, tol = 1e-10, workers = -1, args = (15, 3, betas[i]))
 
-    plt.imshow(heatmap_avg, cmap='RdBu', extent=[1e-3, .9, .01, 1], origin='lower',vmin = .9, vmax = 1.1, interpolation = 'none', norm = mn.MidpointNormalize(midpoint=1), aspect=.9)
-    plt.colorbar()
-    plt.title(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$",size=16)
-    plt.xlabel("Fraction of edges in modules", size = 16)
-    plt.ylabel(r"$\lambda _{cc}$", size=16)
+        A = modular_toys_general(15, 3, outcome.x[0], outcome.x[1])
+        outcomes[i] = outcome.x
+        scores[i] = uniformity_cost(network0, A, betas[i])
+        scores_original[i] = uniformity_cost(network0, network0, betas[i])
 
-    plt.figure()
-    for i in range(0, len(mod_range), 10):
-        plt.plot(lambda_cc_range, heatmap_avg[:, i], label = str(mod_range[i])[0:5])
-    plt.xlabel(r"$\lambda _{cc}$", size=16)
-    plt.ylabel(r"$\frac{D_{KL}(A || f(A^*))}{D_{KL}(A || f(A))}$",size=16)
-    plt.legend()
-    pk.dump([lambda_cc_range, mod_range, heatmap_avg], open("lam_cc_range, mod_range, heatmap_avg, 25 trials, 0.05.pickle","wb"))
-    plt.show()
-    '''
-    A_target = modular_toy_paper()
-
-    #beta_range = np.linspace(1e-3, 2, 500)
-    lambda_cc_range = np.linspace(1e-3, 3, 500)
-    lambda_b_range = np.linspace(1e-3, 3, 500)
-    for c in [2,3,4,6]:
-        A_target = modular_toys_general(N_internal, c, 1, 1)
-        results = np.zeros((len(lambda_cc_range), len(lambda_b_range)))
-        beta = .01
-        for i in range(len(lambda_cc_range)):
-            print(i)
-            for j in range(len(lambda_b_range)):
-                A_init = modular_toys_general(N_internal, c, lambda_cc_range[i], lambda_b_range[j])
-                #score_ext = KL_score_external(A_init, beta, A_target)
-                #score_baseline = KL_score(A_target, beta)
-                #results[i][j] = score_ext/score_baseline
-                results[i][j] = uniformity_cost(A_target, A_init, beta) / uniformity_cost(A_target, A_target, beta)
-
-        pk.dump([lambda_cc_range, lambda_b_range, results], open("uniformity Cost lambda-lambda heatmap 24 nodes .01,"+str(c)+" comms.pickle", "wb"))
-        plt.figure(c)
-        cax = plt.imshow(results, cmap='RdBu', extent=[.01, 3, .01, 3], origin='lower', vmax = 1.5hes, norm = mn.MidpointNormalize(midpoint=1), aspect=1)
-        #plt.title(r"$D_{KL}(A || f(A^*))-D_{KL}(A || f(A))$"+", "+str(c)+" modules", size=16)
-        plt.title("Uniformity Cost,"+str(c)+" modules", size = 16)
-        plt.xlabel(r"$\lambda_b$", size=16)
-        plt.ylabel(r"$\lambda _{cc}$", size=16)
-        cbar = plt.colorbar(cax)
-        #cbar = plt.colorbar(cax, ticks=[.2, .4, .6, .8, 1])
-        #cbar.ax.set_yticklabels(['.2', '.4', '.6', '.8', '>1'])
-    plt.show()
-    '''
-    '''
-    A_list = []
-    scores = []
-    scores_original = []
-    optimal_vals = []
-    num_modules = [2,3,4,6]
-    for i in num_modules:
-        network0 = modular_toys_general(N_internal, i, 1, 1)
-        beta = .05
-        eta = np.exp(-beta)
-        J = np.ones((len(network0), len(network0)))
-        I = np.identity(len(network0))
-        pi = get_stationary3(network0)
-        bounds = [(0, 10) for i in range(2)]
-        #numParams, comps, comps_c, inv_labels, inv_labels_c = get_pickleable_params(network0, include_nonexistent= True)
-        #print(comps)
-        #numParams, parameterized = getSymReducedParams(network0, include_nonexistent= True)
-        # outcome = op.differential_evolution(pickleable_cost_func, bounds=bounds, tol=1e-10, maxiter = 100000, workers=-1,
-        #                                    args=(comps, comps_c, inv_labels, inv_labels_c, beta, network0, True), disp = True)
-        # A = parameterized(list(outcome.x))
-
-        outcome = op.differential_evolution(KL_modular_toys_general, bounds= bounds, args = (N_internal, i, beta), workers = 5, disp = True, maxiter = 10000, tol = 1e-10)
-        #outcome = op.basinhopping(KL_modular_toys_general, seeded_rng.rand(2) * 10, minimizer_kwargs={"args":(N_internal, i, beta), "bounds":bounds}, niter = 10000, niter_success= 500, disp = True)
-        A = modular_toys_general(N_internal, i, outcome.x[0], outcome.x[1])
-        print(outcome.x)
-        scores.append(KL_score_external(A, beta, network0))
-        scores_original.append(KL_score(network0, beta))
-        optimal_vals.append(outcome.x)
-
-        print("YEET")
-        print(KL_score_external(A, beta, network0), KL_score(network0, beta))
-
-        network0 = normalize(network0)
-        # plt.figure(0)
-        # cmap = plt.get_cmap("binary")
-        # norm = mpl.colors.Normalize(vmin=0, vmax=1)
-        # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-        # sm.set_array([])
-        # G_0 = nx.from_numpy_matrix(network0)
-        # graph_pos = nx.spring_layout(G_0, iterations = 100)
-        # edgewidth = [max(.25 ,4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
-        # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-        # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
-        #
-        #
-        # plt.figure(1)
-        # learned_0 = learn(network0, beta)
-        # G_0 = nx.from_numpy_matrix(learned_0)
-        # edgewidth = [max(.25 ,4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
-        # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-        # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
-        #
-        #
-        # plt.figure(2)
-        # G_0 = nx.from_numpy_matrix(A)
-        # edgewidth = [max(.25 ,4 * (d['weight']) ) for (u, v, d) in G_0.edges(data=True)]
-        # edgecolor =[cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
-        # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-        # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
-        #
-        # plt.figure(3)
-        # learned_A = learn(A, beta)
-        # G_0 = nx.from_numpy_matrix(learned_A)
-        # edgewidth = [max(.25 ,4 * (d['weight']) ) for (u, v, d) in G_0.edges(data=True)]
-        # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-        # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
-        # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-        # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
-
-        # print(pd.DataFrame(network0))
-        # print(pd.DataFrame(learned_0))
-        # print(pd.DataFrame(A))
-        # print(pd.DataFrame(learned_A))
-        A_list.append(A)
-        #plt.show()
-
-    plt.scatter(num_modules, scores, label = "optimized")
-    plt.scatter(num_modules, scores_original, label = "original")
-    plt.legend()
-    plt.figure()
-    optimal_vals = np.array(optimal_vals)
-    plt.scatter(num_modules, optimal_vals[:, 0], label = 'cross-cluster')
-    plt.scatter(num_modules, optimal_vals[:, 1], label = 'boundary')
+    plt.figure(4)
+    plt.xlabel(r'$\beta$')
+    plt.ylabel("Optimal Weight")
+    plt.plot(betas, outcomes[:, 0], label = r'$\lambda_{cc}')
+    plt.plot(betas, outcomes[:,1], label = r'$\lambda_{b}')
     plt.legend()
 
-    plt.figure()
-    plt.scatter(num_modules, np.array(scores)/np.array(scores_original))
+    plt.figure(5)
+    plt.xlabel(r'$\beta$')
+    plt.ylabel('KL Divergence')
+    plt.plot(betas, scores_original, label = 'Original Network')
+    plt.plot(betas, scores, label = 'Optimized')
+    plt.legend()
+
+    A = normalize(modular_toys_general(15, 3, outcome.x[0], outcome.x[1]))
+    # print(KL_score_external(A, beta, network0), KL_score(network0, beta))
+    # print(uniformity_cost(network0, A, beta), uniformity_cost(network0, network0, beta))
+    # plt.figure(0)
+    # cmap = plt.get_cmap("binary")
+    # norm = mpl.colors.Normalize(vmin=0, vmax=1)
+    # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    # sm.set_array([])
+    # G_0 = nx.from_numpy_matrix(network0)
+    # graph_pos = nx.spring_layout(G_0, iterations = 100)
+    # edgewidth = [max(.25 ,4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+    # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+    # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+    # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+    # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+    # plt.figure(1)
+    # learned_0 = learn(network0, beta)
+    # G_0 = nx.from_numpy_matrix(learned_0)
+    # edgewidth = [max(.25 ,4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+    # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+    # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+    # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+    # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+    # plt.figure(2)
+    # G_0 = nx.from_numpy_matrix(A)
+    # edgewidth = [max(.25 ,4 * (d['weight']) ) for (u, v, d) in G_0.edges(data=True)]
+    # edgecolor =[cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+    # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+    # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+    # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+    # plt.figure(3)
+    # learned_A = learn(A, beta)
+    # G_0 = nx.from_numpy_matrix(learned_A)
+    # edgewidth = [max(.25 ,4 * (d['weight']) ) for (u, v, d) in G_0.edges(data=True)]
+    # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+    # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+    # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+    # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+    # print(pd.DataFrame(network0))
+    # print(pd.DataFrame(learned_0))
+    # print(pd.DataFrame(A))
+    # print(pd.DataFrame(learned_A))
+    # pk.dump([network0, A], open("superSymmetric Regular Graph 2000 steps 2.pickle", "wb"))
+    # pk.dump([network0, A], open("Highly Symmetric nonregular network.pickle","wb"))
+
     plt.show()
-    '''
-    #pk.dump(A_list, open("modular size 24 symreduced .05.pickle","wb"))
