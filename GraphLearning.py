@@ -1,6 +1,5 @@
 import copy
 from colour import Color
-#import numpy as np
 import mynumpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -9,11 +8,6 @@ from matplotlib import colors
 from operator import itemgetter
 from graphviz import Digraph
 import os
-import pygmo as pg
-import heapq
-import tempfile
-import itertools
-# import dill as pk
 import pickle as pk
 from copy import deepcopy
 import copy
@@ -32,34 +26,21 @@ import MidpointNormalize as mn
 import unionfind as uf
 import copyreg
 import types
-import warnings
-warnings.filterwarnings("ignore")
-pd.set_option('display.max_rows', 500)
-pd.set_option('display.max_columns', 500)
-pd.set_option('display.width', 1000)
 
 rng = np.random.RandomState()
 #seeded_rng = np.random.RandomState(17310145)
 seeded_rng = rng
-N = 12
+
 N_internal = 24
-sources = 10
 
-languages = "C:/Users/billy/PycharmProjects/GraphLearningAgents/graphs_Language_share/"
-music = "C:/Users/billy/PycharmProjects/GraphLearningAgents/graphs_Music_share/"
-web = "C:/Users/billy/PycharmProjects/GraphLearningAgents/graphs_Web_share/"
-social = "C:/Users/billy/PycharmProjects/GraphLearningAgents/graphs_Social_share/"
-citation = "C:/Users/billy/PycharmProjects/GraphLearningAgents/graphs_Citation_share/"
-semantic = "C:/Users/billy/PycharmProjects/GraphLearningAgents/graphs_Semantic_share/"
+head_dir = "C:/Users/billy/PycharmProjects/GraphLearningAgents/"
 
-def matrix(m, n, val):
-    M = []
-    for i in range(m):
-        row = []
-        for j in range(n):
-            row.append(val)
-        M.append(row)
-    return np.array(M)
+languages = head_dir + "graphs_Language_share/"
+music = head_dir + "graphs_Music_share/"
+web = head_dir + "graphs_Web_share/"
+social = head_dir + "graphs_Social_share/"
+citation = head_dir + "graphs_Citation_share/"
+semantic = head_dir + "graphs_Semantic_share/"
 
 def get_random_modular(n, modules, edges, p, getCommInfo=False):
     pairings = {}
@@ -152,7 +133,7 @@ def unnormalize(A):
 def getNumEdges(A):
     return np.count_nonzero(A) / 2
 def get_stationary3(A):
-    output = np.count_nonzero(A, axis = 0) / (2 * getNumEdges(A))
+    output = np.sum(A, axis = 0) / (np.sum(A))
     return output
 
 def KL_Div_Old(U, V):
@@ -165,29 +146,20 @@ def KL_Div_Old(U, V):
             if not np.isclose(U[i][j], 0, rtol = 1e-16) and not np.isclose(V[i][j], 0, rtol = 1e-16):
                 result += pi[i] * U[i][j] * np.log(V[i][j]/U[i][j])
     return -result
-def KL_Divergence(U, V):
+def KL_Divergence(U, V, weighted_net = None):
     U = normalize(U)
     V = normalize(V)
-    pi = get_stationary3(U)
+    if weighted_net is None:
+        pi = get_stationary2(U)
+    else:
+        pi = get_stationary3(weighted_net)
     combined = np.einsum('i, ij -> ij', pi, U)
     logged = np.log(V/U)
     logged[U == 0] = 0
     result = combined.T @ logged
-    return -np.trace(result)
-
-def create_agent_network(N, numSources, edges):
-    adjMatrix = np.zeros((N, N), dtype = float)
-    for i in range(sources, N):
-        randIndex = seeded_rng.randint(N)
-        while adjMatrix[randIndex][i] != 0 or i == randIndex:
-            randIndex = seeded_rng.randint(N)
-        adjMatrix[randIndex][i] += 1.0
-    for i in range(edges - N + sources):
-        randEdge = seeded_rng.choice(N, 2, replace=False)
-        while adjMatrix[randEdge[0]][randEdge[1]] != 0 or randEdge[1] < numSources:
-            randEdge = seeded_rng.choice(N, 2, replace=False)
-        adjMatrix[randEdge[0]][randEdge[1]] += 1.0
-    return adjMatrix
+    outcome = -np.trace(result)
+    print(outcome)
+    return outcome
 
 def create_network(N, edges):
     adjMatrix = np.zeros((N, N), dtype = float)
@@ -200,7 +172,6 @@ def create_network(N, edges):
 
 def create_undirected_network(N, edges):
     adjMatrix = np.zeros((N, N), dtype = float)
-    #perm = seeded_rng.permutation(np.arange(N))
     perm = np.arange(N)
     for i in range(N - 1):
         adjMatrix[perm[i]][perm[i+1]] = 1.0
@@ -213,6 +184,7 @@ def create_undirected_network(N, edges):
         adjMatrix[randEdge[0]][randEdge[1]] = 1.0
         adjMatrix[randEdge[1]][randEdge[0]] = 1.0
     return adjMatrix
+
 def get_laplacian(A):
     result = -deepcopy(A)
     for i in range(len(result[0])):
@@ -255,7 +227,7 @@ def create_modular_toy(edges, modular_edges):
         add_cross_edge()
     return adjMatrix
 
-def modular_toy_paper():
+def modular_toy_paper(): ##constructs the three-community network, often used in studying human information processing
     result = np.zeros((15, 15))
     for i in range(5):
         for j in range(5):
@@ -296,22 +268,6 @@ def biased_modular(cross_cluster_bias, boundary_bias):
         for j in range(11, 14):
             result[i][j], result[j][i] = boundary_bias, boundary_bias
     return result
-
-def agent_network_sim(network, agent_networks_init, iterations, betas):
-    divergences = np.zeros((N, iterations))
-    agent_networks = copy.deepcopy(agent_networks_init)
-    agent_networks_MLE = copy.deepcopy(agent_networks_init)
-    for i in range(iterations):
-        print("iteration \t" +str(i))
-        for j in range(N):
-            external_input = 0
-            for k in np.nonzero(network[:, j])[0]:
-                external_input += network[k][j] * normalize(agent_networks[k])
-            if len(np.nonzero(network[:, j])[0]) != 0:
-                agent_networks_MLE[j] += external_input
-                agent_networks[j] = normalize(learn(normalize(agent_networks_MLE[j]), betas[j]))
-            divergences[j][i] = KL_Divergence(agent_networks_init[0], normalize(agent_networks[j]))
-    return agent_networks, divergences
 
 def check_symmetric(a, rtol=1e-05, atol=1e-08):
     return np.allclose(a, a.T, rtol=rtol, atol=atol) and np.allclose(np.diag(a), np.zeros(len(a)))
@@ -375,13 +331,6 @@ def rewire_regular(A, ensureConnected = True):
             return B
     return B
 
-def printMatrixToFile(M, file):
-    for r in range(len(M)):
-        for c in range(len(M[0])):
-            file.write(str(M[r][c]) + "\t")
-        file.write("\n")
-    file.write("\n")
-
 def KL_score(A, beta, A_target = None):
     return KL_Divergence(A, learn(A, beta))
 
@@ -391,21 +340,8 @@ def KL_score_ext_zipped(input, beta):
         return 100
     return KL_score_external(biased_modular(cc_bias, b_bias), beta, modular_toy_paper())
 
-counterOpt = 0
-mod_network = modular_toy_paper()
-def KL_score_ext_full(input, beta):
-    global counterOpt, mod_network
-    counterOpt += 1
-    if counterOpt % 1000 == 0:
-        print(counterOpt)
-    iu = np.triu_indices(15, k = 1)
-    A = np.zeros((15,15))
-    A[iu] = input
-    A = np.maximum(A, A.T)
-    return KL_score_external(A, beta, mod_network)
-
-def KL_score_external(A_input, beta, A_target):
-    return KL_Divergence(A_target, learn(A_input, beta))
+def KL_score_external(A_input, beta, A_target, weighted_net = None):
+    return KL_Divergence(A_target, learn(A_input, beta), weighted_net = weighted_net)
 
 def automorphism_count(A, beta, A_target = None):
     IG = ig.Graph.Adjacency(A.tolist())
@@ -421,11 +357,13 @@ def get_automorphisms(A):
     IG = ig.Graph.Adjacency(A.tolist())
     return np.transpose(np.array(IG.get_automorphisms_vf2()))
 
-def get_structurally_symmetric(A):
-    autos = get_automorphisms(A)
+def get_structurally_symmetric(A, force_unique = True):
     disj_set = uf.UnionFind()
     for i in range(len(A)):
         disj_set.add(i)
+    if force_unique:
+        return disj_set.components(), disj_set.component_mapping()
+    autos = get_automorphisms(A)
     for i in range(len(A)):
         print(i)
         for j in range(len(autos[0])):
@@ -474,7 +412,6 @@ def get_complement_graph(A):
         B[i][i] = 0
     return B
 
-#only works perfectly for symmetric
 def getSymReducedParams(A, include_nonexistent = True):
     comps, comp_maps, edge_labels, inv_labels = unique_edges(A, 0)
     if include_nonexistent:
@@ -515,7 +452,9 @@ def get_pickleable_params(A, include_nonexistent = True):
         comps_c, comp_maps_c, edge_labels_c, inv_labels_c = unique_edges(A_c, 0)
         return len(comps) + len(comps_c), comps, comps_c, inv_labels, inv_labels_c
     return len(comps), comps, None, inv_labels, None
-def pickleable_cost_func(input, comps, comps_c, inv_labels, inv_labels_c, beta, A_target, include_nonexistent):
+
+def pickleable_cost_func(input, comps, comps_c, inv_labels, inv_labels_c, beta, A_target, include_nonexistent,
+                         KL = True, weighted_net = None):
     B = np.zeros((len(A_target), len(A_target)))
     for i in range(len(comps)):
         for x in comps[i]:
@@ -526,7 +465,11 @@ def pickleable_cost_func(input, comps, comps_c, inv_labels, inv_labels_c, beta, 
             for x in comps_c[i]:
                 row, col = inv_labels_c[x]
                 B[row][col], B[col][row] = input[len(comps) + i], input[len(comps) + i]
-    return KL_score_external(B, beta, A_target)
+    if KL:
+        return KL_score_external(B, beta, A_target, weighted_net = weighted_net)
+    else:
+        return uniformity_cost(A_target, B, beta)
+
 
 def reduced_cost_func(input, comps, comps_c, inv_labels, inv_labels_c, beta, A_target, indices_c):
     B = np.zeros((len(A_target), len(A_target)))
@@ -549,13 +492,13 @@ def grad_zipped(input, P_0, pi, beta, J, I):
     output = gradient(P_0, pi, A, eta, J, I)
     return output[iu]
 
-
 def cost_func_zipped(input, P_0, pi, beta, J, I):
     iu = np.triu_indices(len(P_0), k=1)
     A = np.zeros((len(P_0), len(P_0)))
     A[iu] = input
     A = np.maximum(A, A.T)
     cost = cost_func(P_0, pi, A, beta, J, I)
+    print(cost)
     return cost
 
 def Q_inv(A, beta, depth):
@@ -590,70 +533,6 @@ def gradient(P_0, pi, A, eta, J, I):
     output = S * AJ - (S*A) @ J
     return output
 
-def cost_X(P_0, pi, X, eta, J, I):
-    A = sigmoid(X)
-    AJ = A @ J
-    P_f = A / AJ
-    Q = sp.linalg.inv(I - eta * P_f)
-    M2 = np.log(P_f @ Q / P_0)
-    M2[np.isnan(M2)] = 0
-    M2[M2 == np.inf] = 0
-    if(np.any(M2 == -np.inf)):
-        print("WHAT")
-        return 10000
-    combined = np.einsum('i, ij -> ij', pi, P_0)
-    return -np.trace(combined.T @ M2)
-
-def cost_X_zipped(input, P_0, pi, eta, J, I):
-    iu = np.triu_indices(15, k=1)
-    X = np.zeros((15, 15))
-    X[iu] = input
-    X = np.maximum(X, X.T)
-    cost = cost_X(P_0, pi, X, eta, J, I)
-    return -np.log(1-eta) + cost
-def sigmoid(X):
-    return 1/(1+np.exp(-X))
-def inv_sigmoid(Y):
-    return np.log(Y/(1-Y))
-
-def grad_X(P_0, pi, X, eta, J, I):
-    A = sigmoid(X)
-    AJ = A @ J
-    P_f = A / AJ
-    Q = sp.linalg.inv(I - eta * P_f)
-    combined = np.einsum('i, ij -> ij', pi, P_0)
-    R = combined / (P_f @ Q)
-    S = (eta * Q.T @ P_f.T - I) @ (R @ Q.T) / (AJ * AJ)
-    return A * (1-A) * (S * AJ - ((S * A) @ J))
-    return output
-
-def grad_X_zipped(input, P_0, pi, eta, J, I):
-    iu = np.triu_indices(15, k=1)
-    X = np.zeros((15, 15))
-    X[iu] = input
-    X = np.maximum(X, X.T)
-    output = grad_X(P_0, pi, X, eta, J, I)
-    return output[iu]
-
-def descend_X(P_0, pi, beta, rate, iterations):
-    eta = np.exp(-beta)
-    I = np.identity(len(P_0))
-    J = np.ones((len(P_0), len(P_0)))
-    count = 0
-    norm = np.inf
-    mod = normalize(modular_toy_paper())
-    X = inv_sigmoid(mod)
-    while count < iterations or norm > 1e-8:
-        descent = rate * grad_X(P_0, pi, X, eta, J, I)
-        X -= descent
-        count += 1
-        norm = sp.linalg.norm(descent)
-        if count % 1000 == 0:
-            print(str(norm) + "\t" + str(count) + "\t" + str(
-                KL_score_external(np.exp(X), beta, mod)))
-    A = sigmoid(X)
-    result = A / (A @ J)
-    return result
 def descend(P_0, pi, beta, rate, iterations):
     eta = np.exp(-beta)
     I = np.identity(len(P_0))
@@ -670,7 +549,8 @@ def descend(P_0, pi, beta, rate, iterations):
         A[A < 0] = 0
         if count % 1000 == 0:
             cost = cost_func(P_0, pi, A, eta, J, I)
-            print(str(norm)+"\t"+str(count)+"\t"+str(np.min(A))+"\t"+str(KL_score_external(A, .3, modular_toy_paper()))+"\t"+str(cost))
+            print(str(norm)+"\t"+str(count)+"\t"+str(np.min(A))+"\t"+
+                  str(KL_score_external(A, .3, modular_toy_paper()))+"\t"+str(cost))
     result = A / np.dot(A, J)
     return result
 
@@ -695,6 +575,7 @@ def symmetry_toy():
         A[i][7], A[7][i] = 1, 1
     A[5][6], A[6][5] = 1, 1
     return A
+
 def optimize(A, beta, iterations, scoreFunc, flipFunc, minimize = True, A_target = None, numParams = False):
     bestVal = float('inf')
     curr = deepcopy(A)
@@ -721,7 +602,6 @@ def optimize(A, beta, iterations, scoreFunc, flipFunc, minimize = True, A_target
             if count > 30:
                 return bestVal, best
         print(str(i)+"\t"+str(currScore)+"\t"+str(bestVal))
-    print(str(bestVal)+"\t BEST VAL!")
     return bestVal,  best
 
 def uniformity_cost(P_0, A, beta):
@@ -802,8 +682,29 @@ def generate_key_sequence(network, letters, iterations):
         current = seeded_rng.choice(np.nonzero(network[current])[0])
     print(dictionary)
 
+def compute_triangle_participation(A):
+    G = nx.from_numpy_matrix(A)
+    cycles_3 = [c for c in nx.cycle_basis(G) if len(c) == 3]
+    edges = []
+    tri_count = {}
+    for i in range(len(A) - 1):
+        for j in range(i + 1, len(A)):
+            if A[i][j] > 0:
+                edges.append([i, j])
+                tri_count[(i, j)] = 0
+    for c in cycles_3:
+        for e in edges:
+            if set(e).issubset(set(c)):
+                tri_count[(e[0], e[1])] += 1
+    return edges, tri_count
 
-
+def get_edge_values(A_original, A):
+    edge_factors = {}
+    for i in range(len(A) - 1):
+        for j in range(i + 1, len(A)):
+            if A_original[i][j] > 0:
+                edge_factors[(i, j)] = A[i][j]/A_original[i][j]
+    return edge_factors
 def create_dictionary(letters):
     result = dict()
     for i in range(len(letters)):
@@ -823,82 +724,84 @@ def colorFader(c1,c2,mix=0): #fade (linear interpolate) from color c1 (at mix=0)
     c1=np.array(mpl.colors.to_rgb(c1))
     c2=np.array(mpl.colors.to_rgb(c2))
     return mpl.colors.to_hex((1-mix)*c1 + mix*c2)
+
 if __name__ == '__main__':
+    weighted = np.loadtxt(languages+"G_Blake.csv", delimiter=",")
+    np.fill_diagonal(weighted, 0)
+    weighted = np.maximum(weighted, weighted.T)
+    network0 = deepcopy(weighted)
+    network0[network0 > 0] = 1
 
-    beta = 1
-    betas = np.linspace(1e-4, 2, 100)
-    scores = np.zeros(len(betas))
-    scores_original = np.zeros(len(betas))
-    network0 = normalize(modular_toys_general(15, 3, 1, 1))
-    outcomes = np.zeros((len(betas), 2))
-    pi = get_stationary3(network0)
-    bounds = [(1e-6, 20) for i in range(2)]
-    for i in range(len(betas)):
-        print(i)
-        outcome = op.differential_evolution(uniformity_cost_zipped, bounds = bounds, tol = 1e-10, workers = -1, args = (15, 3, betas[i]))
+    beta = .05
+    numParams, comps, comps_c, inv_labels, inv_labels_c = get_pickleable_params(network0, include_nonexistent= False)
+    #print(comps)
+    numParams, parameterized = getSymReducedParams(network0, include_nonexistent= False)
+    bounds = [(0, 1) for i in range(numParams)]
+    outcome = op.dual_annealing(pickleable_cost_func, bounds = bounds,
+                                args=(comps, comps_c, inv_labels, inv_labels_c, beta, network0, False, True, network0),
+                                accept = -50, maxiter = 1000, maxfun= 100000)
 
-        A = modular_toys_general(15, 3, outcome.x[0], outcome.x[1])
-        outcomes[i] = outcome.x
-        scores[i] = uniformity_cost(network0, A, betas[i])
-        scores_original[i] = uniformity_cost(network0, network0, betas[i])
+    A = parameterized(outcome.x)
+    A = normalize(A)
+    print(outcome.x/ outcome.x[0])
+    print(KL_score_external(A, beta, network0), KL_score(network0, beta))
+    print(uniformity_cost(network0, A, beta), uniformity_cost(network0, network0, beta))
+    network0 = normalize(network0)
 
-    plt.figure(4)
-    plt.xlabel(r'$\beta$')
-    plt.ylabel("Optimal Weight")
-    plt.plot(betas, outcomes[:, 0], label = r'$\lambda_{cc}')
-    plt.plot(betas, outcomes[:,1], label = r'$\lambda_{b}')
-    plt.legend()
+    plt.figure(0)
+    cmap = plt.get_cmap("binary")
+    norm = mpl.colors.Normalize(vmin=0, vmax=1)
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    G_0 = nx.from_numpy_matrix(network0)
+    graph_pos = nx.spring_layout(G_0, iterations = 100)
+    edgewidth = [max(.25 ,4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+    edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+    nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+    nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+    #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
 
-    plt.figure(5)
-    plt.xlabel(r'$\beta$')
-    plt.ylabel('KL Divergence')
-    plt.plot(betas, scores_original, label = 'Original Network')
-    plt.plot(betas, scores, label = 'Optimized')
-    plt.legend()
 
-    A = normalize(modular_toys_general(15, 3, outcome.x[0], outcome.x[1]))
-    # print(KL_score_external(A, beta, network0), KL_score(network0, beta))
-    # print(uniformity_cost(network0, A, beta), uniformity_cost(network0, network0, beta))
-    # plt.figure(0)
-    # cmap = plt.get_cmap("binary")
-    # norm = mpl.colors.Normalize(vmin=0, vmax=1)
-    # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    # sm.set_array([])
-    # G_0 = nx.from_numpy_matrix(network0)
-    # graph_pos = nx.spring_layout(G_0, iterations = 100)
-    # edgewidth = [max(.25 ,4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-    # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-    # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
-    # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-    # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
-    # plt.figure(1)
-    # learned_0 = learn(network0, beta)
-    # G_0 = nx.from_numpy_matrix(learned_0)
-    # edgewidth = [max(.25 ,4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-    # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-    # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
-    # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-    # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
-    # plt.figure(2)
-    # G_0 = nx.from_numpy_matrix(A)
-    # edgewidth = [max(.25 ,4 * (d['weight']) ) for (u, v, d) in G_0.edges(data=True)]
-    # edgecolor =[cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-    # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
-    # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-    # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
-    # plt.figure(3)
-    # learned_A = learn(A, beta)
-    # G_0 = nx.from_numpy_matrix(learned_A)
-    # edgewidth = [max(.25 ,4 * (d['weight']) ) for (u, v, d) in G_0.edges(data=True)]
-    # edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
-    # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
-    # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-    # #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
-    # print(pd.DataFrame(network0))
-    # print(pd.DataFrame(learned_0))
-    # print(pd.DataFrame(A))
-    # print(pd.DataFrame(learned_A))
-    # pk.dump([network0, A], open("superSymmetric Regular Graph 2000 steps 2.pickle", "wb"))
-    # pk.dump([network0, A], open("Highly Symmetric nonregular network.pickle","wb"))
+    plt.figure(1)
+    learned_0 = learn(network0, beta)
+    G_0 = nx.from_numpy_matrix(learned_0)
+    edgewidth = [max(.25 ,4 * (d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+    edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+    nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+    nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+    #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
 
+
+    plt.figure(2)
+    G_0 = nx.from_numpy_matrix(A)
+    edgewidth = [max(.25 ,4 * (d['weight']) ) for (u, v, d) in G_0.edges(data=True)]
+    edgecolor =[cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+    nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+    nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+    #plt.colorbar(sm, ticks=np.linspace(0, 1, 6))
+
+    plt.figure(3)
+    learned_A = learn(A, beta)
+    G_0 = nx.from_numpy_matrix(learned_A)
+    edgewidth = [max(.25 ,4 * (d['weight']) ) for (u, v, d) in G_0.edges(data=True)]
+    edgecolor = [cmap(max(.1, 4 * d['weight'])) for (u, v, d) in G_0.edges(data=True)]
+    nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal))
+    nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+
+
+    edges, tri_count = compute_triangle_participation(network0)
+    edge_factors = get_edge_values(network0, A)
+    edge_vals = np.zeros(len(edges))
+    tri_participation = np.zeros(len(edges))
+    print(tri_count)
+    print(edge_factors)
+    for i in range(len(edges)):
+        edge_vals[i] = edge_factors[(edges[i][0], edges[i][1])]
+        tri_participation[i] = tri_count[(edges[i][0], edges[i][1])]
+    plt.figure()
+    plt.scatter(tri_participation, edge_vals)
+    plt.xlabel("tri participation")
+    plt.ylabel("edge scaling")
+    plt.figure()
+    plt.hist(edge_vals, bins = 20)
     plt.show()
