@@ -5,13 +5,19 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 
 from matplotlib import colors
+from operator import itemgetter
 from graphviz import Digraph
 import os
 import pickle as pk
 from copy import deepcopy
+import copy
+from depq import DEPQ
+import pandas as pd
 import networkx as nx
 import scipy as sp
 from scipy import optimize as op
+import random as rd
+import msvcrt
 from scipy import stats
 os.environ["PATH"] += os.pathsep + 'C:/Users/billy/Downloads/graphviz-2.38/release/bin'
 import small_world as sw
