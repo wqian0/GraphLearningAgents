@@ -3,6 +3,7 @@ from colour import Color
 import mynumpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import matplotlib.colors as mcolors
 from sklearn.linear_model import LinearRegression
 
 from matplotlib import colors
@@ -845,7 +846,7 @@ if __name__ == '__main__':
     # numParams, comps, comps_c, inv_labels, inv_labels_c = get_pickleable_params(network0, include_nonexistent=False)
     # numParams, parameterized = getSymReducedParams(network0, include_nonexistent=False)
     # bounds = [(0, 1) for i in range(numParams)]
-    # outcomes = np.zeros((len(betas), 2))
+    # outcomes = np.zeros((len(betas), 1))
     # bounds = [(1e-6, 20) for i in range(2)]
     # for i in range(len(betas)):
     #     print(i)
@@ -869,12 +870,12 @@ if __name__ == '__main__':
     # plt.xlabel(r'$\beta$')
     # plt.ylabel("Optimal Weight")
     # plt.rcParams.update({'font.size': 16})
-    # plt.plot(betas, outcomes[:, 0], label=r'$\lambda_{l}$', color = 'black')
-    # #plt.plot(betas, outcomes[:, 1], label=r'$\lambda_{b}$', color = 'lightgrey')
+    # plt.plot(betas, outcomes[:, 0], label=r'$\lambda_{l}$', color = 'orange')
+    # #plt.plot(betas, outcomes[:, 1], label=r'$\lambda_{b}$', color = 'mediumseagreen')
     # plt.legend(frameon = False)
     # plt.tight_layout()
     # plt.savefig('kl_weights_lat.pdf')
-
+    #
     # plt.figure(5, figsize = (5.5,4.5), dpi = 1000)
     # plt.rcParams.update({'font.size': 16})
     # plt.xlabel(r'$\beta$')
@@ -882,93 +883,70 @@ if __name__ == '__main__':
     # plt.ylabel('KL Divergence, ' + r'$D_{KL}(A||f(A_{in}))$')
     # #plt.ylabel('KL Divergence')
     # plt.rcParams.update({'font.size': 16})
-    # plt.plot(betas, scores_original, label='Original ('+r'$A_{in} = A$'+')', color = 'orange')
-    # plt.plot(betas, scores, label='Optimized (' + r'$A_{in} = A^{*}$' + ')', color = 'green')
+    # plt.plot(betas, scores_original, label='Original ('+r'$A_{in} = A$'+')', color = 'lightgrey')
+    # plt.plot(betas, scores, label='Optimized (' + r'$A_{in} = A^{*}$' + ')', color = 'black')
     # plt.legend(frameon = False)
     # plt.tight_layout()
-    # plt.savefig('kl_scores.pdf')
-
+    # plt.savefig('kl_scores_lat.pdf')
+    #
     # print('good beta', betas[np.argmax(scores)])
 
-    betas = np.linspace(0.01, 1, 200)
-    edges_orig = np.zeros((200, 2))
-    edges_inv = np.zeros((200, 2))
-    beta = .21
-    for i in range(len(betas)):
-        print(i)
-        #network0 = modular_toys_general(15,3,1,1)
-        network0 = get_lattice_graph([3,5])
-        numParams, comps, comps_c, inv_labels, inv_labels_c = get_pickleable_params(network0, include_nonexistent= False)
-        # print(comps)
-        # print(comps_c)
-        numParams, parameterized = getSymReducedParams(network0, include_nonexistent= False)
-        bounds = [(0, 1) for j in range(numParams)]
-        outcome = op.dual_annealing(pickleable_cost_func, bounds = bounds,
-                                    args=(comps, comps_c, inv_labels, inv_labels_c, betas[i], network0, False, True, network0),
-                                    accept = -50, maxiter = 1500, maxfun= 1000000)
+    beta = .05
+    network0 = modular_toys_general(15,3,1,1)
+    #network0 = get_lattice_graph([3,5])
+    # numParams, comps, comps_c, inv_labels, inv_labels_c = get_pickleable_params(network0, include_nonexistent= False)
+    # # print(comps)
+    # # print(comps_c)
+    # numParams, parameterized = getSymReducedParams(network0, include_nonexistent= False)
+    # bounds = [(0, 1) for j in range(numParams)]
+    # outcome = op.dual_annealing(pickleable_cost_func, bounds = bounds,
+    #                             args=(comps, comps_c, inv_labels, inv_labels_c, betas[i], network0, False, True, network0),
+    #                             accept = -50, maxiter = 1500, maxfun= 1000000)
+    #
+    # A = parameterized(outcome.x)
+    # # A /= np.sum(A)
+    # # A *= 60
+    # A = normalize(A)
+    # # #print(outcome.x/ outcome.x[0])
+    # # print(KL_score_external(A, beta, network0), KL_score(network0, beta))
+    # #network0 = normalize(network0)
+    # # network0 /= np.sum(network0)
+    # # network0 *= 60
 
-        A = parameterized(outcome.x)
-        # A /= np.sum(A)
-        # A *= 60
-        A = normalize(A)
-        # #print(outcome.x/ outcome.x[0])
-        # print(KL_score_external(A, beta, network0), KL_score(network0, beta))
-        # print(uniformity_cost(network0, A, beta), uniformity_cost(network0, network0, beta))
-        #network0 = normalize(network0)
-        # network0 /= np.sum(network0)
-        # network0 *= 60
-
-        #A_inv = get_optimal_directly(normalize(modular_toys_general(15,3,1,1)), betas[i])
-        A_inv = get_optimal_directly(normalize(get_lattice_graph([3,5])), betas[i])
-        edges_orig[i] = np.array([A[0][1], A[0][3]])
-        edges_inv[i] = np.array([A_inv[0][1], A_inv[0][3]])
-        #edges_orig[i] = np.array([A[1][2], A[0][1], A[4][5]])
-        #edges_inv[i] = np.array([A_inv[1][2], A_inv[0][1], A_inv[4][5]])
-    plt.figure(0)
-    plt.plot(betas, edges_orig[:,0])
-    plt.plot(betas, edges_inv[:, 0])
-    plt.xlabel("beta")
-    plt.ylabel("transition prob of tri edge")
-
-    plt.figure(1)
-    plt.plot(betas, edges_orig[:,1])
-    plt.plot(betas, edges_inv[:, 1])
-    plt.xlabel("beta")
-    plt.ylabel("transition prob of cross edge")
-
-    plt.figure(2)
-    plt.plot(betas, edges_orig[:,2])
-    plt.plot(betas, edges_inv[:, 2])
-    plt.xlabel("beta")
-    plt.ylabel("transition prob of cross-cluster edge")
-    for i in range(15):
-        A_inv[i][i] = 0
-    A_inv[A_inv < 0] = 0
-    A_inv = normalize(A_inv)
-    A_inv /= abs(np.sum(A_inv))
-    A_inv *= 60
-
-    plt.figure(0)
-    cmap = plt.get_cmap("RdGy")
-    norm = mpl.colors.Normalize(vmin=-1, vmax=1)
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
-    #G_0 = nx.from_numpy_matrix(network0)
-    G_0 = nx.from_numpy_matrix(A_inv)
-    #G_0 = nx.from_numpy_matrix(learn_nonormalize(A_inv, beta))
-
-    graph_pos = nx.spring_layout(G_0, iterations = 1000, k = .5)
-    graph_pos = get_modular_layout()
-
-    edgewidth = [max(2, 4 * abs(d['weight'])**1)  for (u, v, d) in G_0.edges(data=True)]
-    edgecolor = [(max(min(-.8 * d['weight'], 1), 0), 0, 0, min(.8 * abs(d['weight']), 1))  for (u, v, d) in G_0.edges(data=True)]
-    #edgecolor = [(0, 0, 0, min(.8 * d['weight'], 1)) for (u, v, d) in G_0.edges(data=True)]
-    nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal), with_labels= False, node_color = 'lightblue')
-    nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
-    ax = plt.gca()
-    ax.collections[0].set_edgecolor("#000000")
-
-    plt.axis('off')
+    # biased = modular_toys_general(15,3, .5 ,1.5)
+    # plt.figure(0)
+    # cmap = plt.get_cmap("RdGy")
+    # norm = mpl.colors.Normalize(vmin=-1, vmax=1)
+    # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    # sm.set_array([])
+    # G_0 = nx.from_numpy_matrix(network0)
+    #
+    #
+    # graph_pos = nx.spring_layout(G_0, iterations = 1000, k = .5)
+    # graph_pos = get_modular_layout()
+    #
+    # edgewidth = [max(2, 4 * abs(d['weight'])**1)  for (u, v, d) in G_0.edges(data=True)]
+    # #edgecolor = [(0, 0, 0, min(.8 * d['weight'], 1)) for (u, v, d) in G_0.edges(data=True)]
+    # G_temp = nx.from_numpy_matrix(biased)
+    # all_cols = mcolors.CSS4_COLORS
+    # edgecolor = []
+    # for (u, v, d) in G_temp.edges(data=True):
+    #     if d['weight'] == 0.5:
+    #         edgecolor.append(all_cols['orange'])
+    #         #edgecolor.append((0, 0.6, 0, 1))
+    #     elif d['weight']== 1.5:
+    #         edgecolor.append(all_cols['mediumseagreen'])
+    #         #edgecolor.append((1, 0.7, .4, 1))
+    #     else:
+    #         edgecolor.append(all_cols['grey'])
+    #         #edgecolor.append((0, 0, 0, 1))
+    #
+    # nx.draw_networkx(G_0, graph_pos, width=np.zeros(N_internal), with_labels= False, node_color = 'lightblue')
+    # nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, connectionstyle='arc3, rad = 0.1', width=edgewidth)
+    # ax = plt.gca()
+    # ax.collections[0].set_edgecolor("#000000")
+    #
+    # plt.axis('off')
     # plt.colorbar(sm, ticks=np.linspace(-1, 1, 6))
 
 
