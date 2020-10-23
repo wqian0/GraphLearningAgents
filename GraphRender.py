@@ -86,10 +86,10 @@ def render_network(input, fignum, graph_pos = None):
     plt.figure(fignum)
     G_0 = nx.from_numpy_matrix(input)
     if not graph_pos:
-        graph_pos = nx.spring_layout(G_0, iterations = 1000, k = 1)
+        graph_pos = nx.spring_layout(G_0, iterations = 1000, k = 2)
     edgewidth = [max(1, 3 * d['weight']**1)  for (u, v, d) in G_0.edges(data=True)]
     edgecolor = [(0, 0, 0, min(.8  * d['weight'], 1))  for (u, v, d) in G_0.edges(data=True)]
-    nx.draw_networkx(G_0, graph_pos, width=np.zeros(len(input)), with_labels= False, node_color = 'lightblue')
+    nx.draw_networkx(G_0, graph_pos, width=np.zeros(len(input)), with_labels= False, node_color = 'lightblue', node_size = 100)
     nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, width=edgewidth)
     ax = plt.gca()
     ax.collections[0].set_edgecolor("#000000")

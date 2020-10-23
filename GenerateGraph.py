@@ -18,12 +18,17 @@ def get_random_modular(n, modules, edges, p, getCommInfo=False):
         randomModule = seeded_rng.randint(0, modules)
         pairings[randomModule].append(i)
         assignments[i] = randomModule
-    for i in range(modules - 1):
-        if len(pairings[i]) < 3 or len(pairings[i+1]) < 3:
-            return None, None
-        e0, e1 = seeded_rng.choice(pairings[i], 1), seeded_rng.choice(pairings[i+1], 1)
-        A[e0, e1], A[e1, e0] = 1, 1
-        cross_module_edges.append((e0, e1))
+    # nodesPerMod = n // modules
+    # for i in range(modules):
+    #     for j in range(nodesPerMod):
+    #         pairings[i].append(nodesPerMod * i + j)
+    #         assignments[nodesPerMod *i + j] = i
+    # for i in range(modules - 1):
+    #     if len(pairings[i]) < 3 or len(pairings[i+1]) < 3:
+    #         return None, None
+    #     e0, e1 = seeded_rng.choice(pairings[i], 1), seeded_rng.choice(pairings[i+1], 1)
+    #     A[e0, e1], A[e1, e0] = 1, 1
+    #     cross_module_edges.append((e0, e1))
     def add_modular_edge():
         randomComm = seeded_rng.randint(0, modules)
         while len(pairings[randomComm]) < 2:
@@ -45,9 +50,10 @@ def get_random_modular(n, modules, edges, p, getCommInfo=False):
         A[randEdge[1], randEdge[0]] += 1
         cross_module_edges.append(randEdge)
     inModuleEdges = int(round(edges * p))
-    betweenEdges = edges - inModuleEdges - modules + 1
-    if betweenEdges < 0:
-        print("NEGATIVE")
+    betweenEdges = edges - inModuleEdges
+    # betweenEdges = edges - inModuleEdges - modules + 1
+    # if betweenEdges < 0:
+    #     print("NEGATIVE")
     for i in range(inModuleEdges):
         add_modular_edge()
     for i in range(betweenEdges):
@@ -58,7 +64,79 @@ def get_random_modular(n, modules, edges, p, getCommInfo=False):
             B[e[0], e[1]], B[e[1], e[0]] = cc_weight, cc_weight
         return B
     if getCommInfo:
-        return A, pairings, assignments
+        return A, parameterized, pairings, assignments
+    else:
+        return A, parameterized
+
+def get_hierarchical_modular(n, modules, edges, p, alpha, getCommInfo=False):
+    pairings = {}
+    assignments = np.zeros(n, dtype = int)
+    cross_module_edges = []
+    weights = np.array([(1 + i) ** -alpha for i in range(n)])
+    dists = []
+    module_dist = np.zeros(modules)
+    for i in range(modules):
+        pairings[i] = []
+    A = np.zeros((n,n))
+    for i in range(n):
+        randomModule = seeded_rng.randint(0, modules)
+        pairings[randomModule].append(i)
+        assignments[i] = randomModule
+    for j in range(modules):
+        dist = np.array([weights[i] for i in pairings[j]])
+        module_dist[j] = np.sum(dist)
+        dist /= np.sum(dist)
+        dists.append(dist)
+    module_dist /= np.sum(module_dist)
+    # nodesPerMod = n // modules
+    # for i in range(modules):
+    #     for j in range(nodesPerMod):
+    #         pairings[i].append(nodesPerMod * i + j)
+    #         assignments[nodesPerMod *i + j] = i
+    # for i in range(modules - 1):
+    #     if len(pairings[i]) < 3 or len(pairings[i+1]) < 3:
+    #         return None, None
+    #     e0, e1 = seeded_rng.choice(pairings[i], 1), seeded_rng.choice(pairings[i+1], 1)
+    #     A[e0, e1], A[e1, e0] = 1, 1
+    #     cross_module_edges.append((e0, e1))
+    def add_modular_edge():
+        randomComm = seeded_rng.choice(modules, p = module_dist)
+        while len(pairings[randomComm]) < 2:
+            randomComm = seeded_rng.choice(modules, p = module_dist)
+        selection = seeded_rng.choice(pairings[randomComm], 2, replace=False, p = dists[randomComm])
+        while A[selection[0], selection[1]] != 0:
+            randomComm = seeded_rng.choice(modules, p = module_dist)
+            while len(pairings[randomComm]) < 2:
+                randomComm = seeded_rng.choice(modules, p = module_dist)
+            selection = seeded_rng.choice(pairings[randomComm], 2, replace=False, p = dists[randomComm])
+        A[selection[0], selection[1]] += 1
+        A[selection[1], selection[0]] += 1
+
+    def add_between_edge():
+        randomComm, randomComm2, e0, e1 = 0, 0, 0, 0
+        while randomComm == randomComm2 or A[e0, e1] != 0:
+            randomComm, randomComm2 = seeded_rng.choice(modules, p = module_dist), seeded_rng.choice(modules, p = module_dist)
+            e0 = seeded_rng.choice(pairings[randomComm], 1, replace=False, p=dists[randomComm])
+            e1 = seeded_rng.choice(pairings[randomComm2], 1, replace=False, p=dists[randomComm2])
+        A[e0, e1] += 1
+        A[e1, e0] += 1
+        cross_module_edges.append((e0, e1))
+    inModuleEdges = int(round(edges * p))
+    betweenEdges = edges - inModuleEdges
+    # betweenEdges = edges - inModuleEdges - modules + 1
+    # if betweenEdges < 0:
+    #     print("NEGATIVE")
+    for i in range(inModuleEdges):
+        add_modular_edge()
+    for i in range(betweenEdges):
+        add_between_edge()
+    def parameterized(cc_weight):
+        B = deepcopy(A)
+        for e in cross_module_edges:
+            B[e[0], e[1]], B[e[1], e[0]] = cc_weight, cc_weight
+        return B
+    if getCommInfo:
+        return A, parameterized, pairings, assignments
     else:
         return A, parameterized
 
@@ -362,3 +440,27 @@ def stoch_block_parameterized(blocks, p_cc, p_in):
         return B
     return A, parameterized
 
+def get_degrees(A):
+    return np.array([sum(A[i]) for i in range(len(A))])
+
+def small_world_parameterized(N_tot, k, p, getLatticeInfo = False):
+    A_0 = np.array(nx.to_numpy_matrix(nx.generators.watts_strogatz_graph(N_tot, k, 0)))
+    A = np.array(nx.to_numpy_matrix(nx.generators.watts_strogatz_graph(N_tot, k, p)))
+    non_lattice_edges = []
+    for i in range(N_tot - 1):
+        for j in range(i + 1, N_tot):
+            if A[i][j] != A_0[i][j] and A[i][j] == 1:
+                non_lattice_edges.append((i, j))
+    def parameterized(nl_weight):
+        B = deepcopy(A)
+        for e in non_lattice_edges:
+            B[e[0]][e[1]], B[e[1]][e[0]] = nl_weight, nl_weight
+        return B
+    if getLatticeInfo:
+        return A, parameterized, non_lattice_edges
+    return A, parameterized
+
+def printArrayToFile(A, file):
+    for r in range(len(A)):
+        file.write(str(A[r]) + "\t")
+    file.write("\n")

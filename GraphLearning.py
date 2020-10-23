@@ -12,9 +12,7 @@ import symmetries as sm
 import GenerateGraph as gg
 import GraphRender as gr
 import matplotlib.pyplot as plt
-os.environ["PATH"] += os.pathsep + 'C:/Users/billy/Downloads/graphviz-2.38/release/bin'
-
-
+import sys
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
@@ -158,7 +156,7 @@ def reduced_cost_func(input, comps, comps_c, inv_labels, inv_labels_c, beta, A_t
             B[row][col], B[col][row] = input[len(comps) + i], input[len(comps) + i]
     return KL_score_external(B, beta, A_target)
 
-def mod_cost_func(input, parameterized, beta, A_target):
+def one_param_cost_func(input, parameterized, beta, A_target):
     B = parameterized(input)
     return KL_score_external(B, beta, A_target)
 
@@ -295,28 +293,93 @@ def optimize_learnability(network0, symmInfo, parameterized, beta, include_nonex
     score = KL_score_external(A, beta, network0)
     return A, score_original, score
 
-def optimize_SBM_learnability(network0, parameterized, beta):
-    bounds = [(0,1)]
-    outcome = op.dual_annealing(mod_cost_func, bounds = bounds,
-                                args = (parameterized, beta, network0), accept = -10, maxiter=1000, maxfun = 100000)
+def optimize_one_param_learnability(network0, parameterized, beta):
+    bounds = [(0, 100)]
+    outcome = op.dual_annealing(one_param_cost_func, bounds = bounds,
+                                args = (parameterized, beta, network0), accept = -10, maxiter=1000, maxfun = 1e6)
     A = parameterized(outcome.x[0])
     score_original = KL_score(network0, beta)
     score = KL_score_external(A, beta, network0)
     return A, outcome.x[0], score_original, score
 
+def WS_trials(N_tot, k, p_res, trials, beta):
+    with np.errstate(invalid='ignore'):
+        p_vals = np.logspace(0, 4, p_res)
+        p_vals /= p_vals[-1]
+        print(p_vals)
+        opts = np.zeros(p_res)
+        scores_orig =  np.zeros(p_res)
+        scores_s = np.zeros(p_res)
+        for i in range(p_res):
+            for j in range(trials):
+                network, parameterized = gg.small_world_parameterized(N_tot, k, p_vals[i])
+                network_s, opt, score_orig, score_s = optimize_one_param_learnability(network, parameterized, beta)
+                opts[i] += opt
+                scores_orig[i] += score_orig
+                scores_s[i] += score_s
+        opts /= trials
+        scores_orig /= trials
+        scores_s /= trials
+        return p_vals, opts, scores_orig, scores_s
+
+def SBM_trials(N_tot, N_comm, edges, alpha, frac_res, trials, beta):
+    with np.errstate(invalid='ignore'):
+        frac_modules = np.linspace(.2, 1, frac_res, endpoint = False)
+        mod_opts, hMod_opts = np.zeros(frac_res), np.zeros(frac_res)
+        scores_mod_orig, scores_hMod_orig = np.zeros(frac_res), np.zeros(frac_res)
+        scores_mod_s, scores_hMod_s = np.zeros(frac_res), np.zeros(frac_res)
+        for i in range(frac_res):
+            for j in range(trials):
+                mod, parMod = gg.get_random_modular(N_tot, N_comm, edges, frac_modules[i])
+                hMod, parhMod = gg.get_hierarchical_modular(N_tot, N_comm, edges, frac_modules[i], alpha)
+                mod_s, mod_opt, score_mod_orig, score_mod_s = optimize_one_param_learnability(mod, parMod, beta)
+                hMod_s, hMod_opt, score_hMod_orig, score_hMod_s = optimize_one_param_learnability(hMod, parhMod, beta)
+                mod_opts[i] += mod_opt
+                hMod_opts[i] += hMod_opt
+                scores_mod_orig[i] += score_mod_orig
+                scores_hMod_orig[i] += score_hMod_orig
+                scores_mod_s[i] += score_mod_s
+                scores_hMod_s[i] += score_hMod_s
+        mod_opts /= trials
+        hMod_opts /= trials
+        scores_mod_orig /= trials
+        scores_hMod_orig /= trials
+        scores_mod_s /= trials
+        scores_hMod_s /= trials
+        return frac_modules, mod_opts, hMod_opts, scores_mod_orig, scores_hMod_orig, scores_mod_s, scores_hMod_s
+
+
 if __name__ == '__main__':
+    N_tot, N_comm = 200, 5
+    edges, k = 1000, 10
+    res, trials = 2, 2
+    alpha = 1
+    betas = np.linspace(1e-3, 1, 25)
+    # arg_1 = int(sys.argv[1]) - 1
+    arg_1 = 28
+    beta = betas[arg_1 % len(betas)]
 
-    network0, parameterized = gg.stoch_block_parameterized([15,15,15], 0.1, .9)
-    symmInfo = get_pickleable_params(network0, include_nonexistent=False)
-    # numParams, parameterized = sm.getSymReducedParams(network0, include_nonexistent=False)
-    #
-    # A, score_original, score = optimize_learnability(network0, symmInfo, parameterized, .1, False)
+    if arg_1 >= len(betas):
+        p_vals, opts, scores_orig, scores_s = WS_trials(N_tot, k, res, trials, beta)
+        f = open(head_dir + str(arg_1 % len(betas)) + "_SW.txt", "w")
+        gg.printArrayToFile(p_vals, f)
+        gg.printArrayToFile(opts, f)
+        gg.printArrayToFile(scores_orig, f)
+        gg.printArrayToFile(scores_s, f)
+    else:
+        frac_modules, mod_opts, hMod_opts, scores_mod_orig, \
+        scores_hMod_orig, scores_mod_s, scores_hMod_s = SBM_trials(N_tot, N_comm, edges, alpha, res, trials, beta)
+        f = open(head_dir + str(arg_1) + "_mod.txt", "w")
+        f2 = open(head_dir + str(arg_1) + "_hMod.txt", "w")
+        gg.printArrayToFile(frac_modules, f)
+        gg.printArrayToFile(mod_opts, f)
+        gg.printArrayToFile(scores_mod_orig, f)
+        gg.printArrayToFile(scores_mod_s, f)
 
-    A, optimal_cc, score_original, score = optimize_SBM_learnability(network0, parameterized, .1)
+        gg.printArrayToFile(frac_modules, f2)
+        gg.printArrayToFile(hMod_opts, f2)
+        gg.printArrayToFile(scores_hMod_orig, f2)
+        gg.printArrayToFile(scores_hMod_s, f2)
 
-    graph_pos = gr.render_network(network0, 0)
-    gr.render_network(A, 1, graph_pos = graph_pos)
 
-    print(optimal_cc, score_original, score)
-    plt.show()
 
