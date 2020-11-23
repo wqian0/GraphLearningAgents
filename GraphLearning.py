@@ -31,6 +31,7 @@ web = head_dir + "graphs_Web_share/"
 social = head_dir + "graphs_Social_share/"
 citation = head_dir + "graphs_Citation_share/"
 semantic = head_dir + "graphs_Semantic_share/"
+textbooks = head_dir + "textbooks/"
 
 def learn(A, beta):
     A = normalize(A)
@@ -350,36 +351,62 @@ def SBM_trials(N_tot, N_comm, edges, alpha, frac_res, trials, beta):
 
 
 if __name__ == '__main__':
-    N_tot, N_comm = 200, 5
-    edges, k = 1000, 10
-    res, trials = 2, 2
-    alpha = 1
-    betas = np.linspace(1e-3, 1, 25)
-    # arg_1 = int(sys.argv[1]) - 1
-    arg_1 = 28
-    beta = betas[arg_1 % len(betas)]
+    N_tot, N_comm = 50, 3
+    edges, k = 150, 6
+    hMod, parHMod = gg.get_hierarchical_modular(N_tot, N_comm, edges, .92, 1)
+    mod, parMod = gg.get_random_modular(N_tot, N_comm, edges, .92)
 
-    if arg_1 >= len(betas):
-        p_vals, opts, scores_orig, scores_s = WS_trials(N_tot, k, res, trials, beta)
-        f = open(head_dir + str(arg_1 % len(betas)) + "_SW.txt", "w")
-        gg.printArrayToFile(p_vals, f)
-        gg.printArrayToFile(opts, f)
-        gg.printArrayToFile(scores_orig, f)
-        gg.printArrayToFile(scores_s, f)
-    else:
-        frac_modules, mod_opts, hMod_opts, scores_mod_orig, \
-        scores_hMod_orig, scores_mod_s, scores_hMod_s = SBM_trials(N_tot, N_comm, edges, alpha, res, trials, beta)
-        f = open(head_dir + str(arg_1) + "_mod.txt", "w")
-        f2 = open(head_dir + str(arg_1) + "_hMod.txt", "w")
-        gg.printArrayToFile(frac_modules, f)
-        gg.printArrayToFile(mod_opts, f)
-        gg.printArrayToFile(scores_mod_orig, f)
-        gg.printArrayToFile(scores_mod_s, f)
+    # gr.render_network(mod, 1)
+    # plt.savefig('mod.pdf')
+    # plt.figure(2)
+    # plt.hist(gg.get_degrees(mod),  bins = 50, density = True)
+    #
+    # mod = parMod(.5)
+    # gr.render_network(mod, 3)
+    # plt.savefig('mod.pdf')
+    #
+    # plt.figure(4)
+    # plt.hist(gg.get_degrees(hMod) , bins = 50, density = True)
 
-        gg.printArrayToFile(frac_modules, f2)
-        gg.printArrayToFile(hMod_opts, f2)
-        gg.printArrayToFile(scores_hMod_orig, f2)
-        gg.printArrayToFile(scores_hMod_s, f2)
+    SW, parSW = gg.small_world_parameterized(N_tot, k, 0)
+    SW = parSW(.5)
+    print(pd.DataFrame(SW))
+    graph_pos = nx.circular_layout(nx.from_numpy_matrix(SW))
+    for i in range(len(SW)):
+        if i % 2 == 0:
+            graph_pos[i] = (graph_pos[i][0] * 1.2, graph_pos[i][1] * 1.2)
+    gr.render_network(SW, 6, k = 6, graph_pos= graph_pos)
+    plt.savefig("ring_rewired_upd.pdf")
+    plt.show()
+    #plt.show()
+    # res, trials = 2, 2
+    # alpha = 1
+    # betas = np.linspace(1e-3, 1, 25)
+    # # arg_1 = int(sys.argv[1]) - 1
+    # arg_1 = 28
+    # beta = betas[arg_1 % len(betas)]
+    #
+    # if arg_1 >= len(betas):
+    #     p_vals, opts, scores_orig, scores_s = WS_trials(N_tot, k, res, trials, beta)
+    #     f = open(head_dir + str(arg_1 % len(betas)) + "_SW.txt", "w")
+    #     gg.printArrayToFile(p_vals, f)
+    #     gg.printArrayToFile(opts, f)
+    #     gg.printArrayToFile(scores_orig, f)
+    #     gg.printArrayToFile(scores_s, f)
+    # else:
+    #     frac_modules, mod_opts, hMod_opts, scores_mod_orig, \
+    #     scores_hMod_orig, scores_mod_s, scores_hMod_s = SBM_trials(N_tot, N_comm, edges, alpha, res, trials, beta)
+    #     f = open(head_dir + str(arg_1) + "_mod.txt", "w")
+    #     f2 = open(head_dir + str(arg_1) + "_hMod.txt", "w")
+    #     gg.printArrayToFile(frac_modules, f)
+    #     gg.printArrayToFile(mod_opts, f)
+    #     gg.printArrayToFile(scores_mod_orig, f)
+    #     gg.printArrayToFile(scores_mod_s, f)
+    #
+    #     gg.printArrayToFile(frac_modules, f2)
+    #     gg.printArrayToFile(hMod_opts, f2)
+    #     gg.printArrayToFile(scores_hMod_orig, f2)
+    #     gg.printArrayToFile(scores_hMod_s, f2)
 
 
 

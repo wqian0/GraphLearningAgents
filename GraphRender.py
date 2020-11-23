@@ -82,14 +82,33 @@ def heatmap_render(betaCap, lam1Cap, lam2Cap):
     cbar.ax.set_yticklabels(['<.9','.95','1.0','1.05', '> 1.1'])
     plt.tight_layout()
 
-def render_network(input, fignum, graph_pos = None):
+def get_colors(A):
+    all_cols = mcolors.CSS4_COLORS
+    G_temp =nx.from_numpy_matrix(A)
+    edgecolor = []
+    for (u, v, d) in G_temp.edges(data = True):
+        if d['weight'] == 0.5:
+            edgecolor.append('forestgreen')
+            #edgecolor.append((0, 0.6, 0, 1))
+        else:
+            edgecolor.append('grey')
+            #edgecolor.append((0, 0, 0, 1))
+    return edgecolor
+
+def render_network(input, fignum, graph_pos = None, k = 1):
     plt.figure(fignum)
     G_0 = nx.from_numpy_matrix(input)
+    d = dict(G_0.degree)
     if not graph_pos:
-        graph_pos = nx.spring_layout(G_0, iterations = 1000, k = 2)
-    edgewidth = [max(1, 3 * d['weight']**1)  for (u, v, d) in G_0.edges(data=True)]
-    edgecolor = [(0, 0, 0, min(.8  * d['weight'], 1))  for (u, v, d) in G_0.edges(data=True)]
-    nx.draw_networkx(G_0, graph_pos, width=np.zeros(len(input)), with_labels= False, node_color = 'lightblue', node_size = 100)
+        graph_pos = nx.spring_layout(G_0, iterations = 2000, k = k)
+    edgewidth = [max(1, 1* d['weight']**1)  for (u, v, d) in G_0.edges(data=True)]
+    #edgecolor = [(0.2, 0.2, 0.2, min(.8  * d['weight'], 1))  for (u, v, d) in G_0.edges(data=True)]
+    edgecolor = get_colors(input)
+    print(edgecolor)
+    # edgecolor = ['blue' for e in G_0.edges]
+    #nx.draw_networkx(G_0, graph_pos, width=np.zeros(len(input)), with_labels= False, node_color = 'lightblue', node_size = [v  * 30 for v in d.values()])
+    nx.draw_networkx(G_0, graph_pos, width=np.zeros(len(input)), with_labels=False, node_color='lightblue',
+                     node_size=200)
     nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, width=edgewidth)
     ax = plt.gca()
     ax.collections[0].set_edgecolor("#000000")
