@@ -23,15 +23,16 @@ rng = np.random.RandomState()
 #seeded_rng = np.random.RandomState(17310145)
 seeded_rng = rng
 
-head_dir = "C:/Users/billy/PycharmProjects/GraphLearningAgents/"
+#head_dir = "C:/Users/billy/PycharmProjects/GraphLearningAgents/"
+head_dir = "/data/jux/bqqian/GraphLearning/"
 
-languages = head_dir + "graphs_Language_share/"
-music = head_dir + "graphs_Music_share/"
-web = head_dir + "graphs_Web_share/"
-social = head_dir + "graphs_Social_share/"
-citation = head_dir + "graphs_Citation_share/"
-semantic = head_dir + "graphs_Semantic_share/"
-textbooks = head_dir + "textbooks/"
+# languages = head_dir + "graphs_Language_share/"
+# music = head_dir + "graphs_Music_share/"
+# web = head_dir + "graphs_Web_share/"
+# social = head_dir + "graphs_Social_share/"
+# citation = head_dir + "graphs_Citation_share/"
+# semantic = head_dir + "graphs_Semantic_share/"
+# textbooks = head_dir + "textbooks/"
 
 def learn(A, beta):
     A = normalize(A)
@@ -81,7 +82,9 @@ def KL_Div_Old(U, V):
                 result += pi[i] * U[i][j] * np.log(V[i][j]/U[i][j])
     return -result
 
+KLCount = 0
 def KL_Divergence(U, V, weighted_net = None):
+    global KLCount
     U = normalize(U)
     V = normalize(V)
     if weighted_net is None:
@@ -93,6 +96,9 @@ def KL_Divergence(U, V, weighted_net = None):
     logged[U == 0] = 0
     result = combined.T @ logged
     outcome = -np.trace(result)
+    # KLCount += 1
+    # if KLCount % 1000 == 0:
+    #     print(outcome, KLCount)
     return outcome
 
 def KL_score(A, beta, A_target = None):
@@ -283,12 +289,12 @@ def get_optimal_directly(A_target, beta):
     inv = sp.linalg.inv(inv_argument)
     return inv @ A_target
 
-def optimize_learnability(network0, symmInfo, parameterized, beta, include_nonexistent, KL = True, force_unique = False):
+def optimize_learnability(network0, weighted, symmInfo, parameterized, beta, include_nonexistent, KL = True):
     numParams, comps, comps_c, inv_labels, inv_labels_c = symmInfo
     bounds = [(0, 1) for i in range(numParams)]
     outcome = op.dual_annealing(pickleable_cost_func, bounds=bounds,
-        args=(comps, comps_c, inv_labels, inv_labels_c, beta, network0, include_nonexistent, KL, network0),
-                                                                accept = -10, maxiter = 1000, maxfun= 100000)
+        args=(comps, comps_c, inv_labels, inv_labels_c, beta, network0, include_nonexistent, KL, weighted),
+                                                                accept = -10, maxiter = 1000, maxfun= 1e6)
     A = parameterized(outcome.x)
     score_original = KL_score(network0, beta)
     score = KL_score_external(A, beta, network0)
@@ -351,62 +357,53 @@ def SBM_trials(N_tot, N_comm, edges, alpha, frac_res, trials, beta):
 
 
 if __name__ == '__main__':
-    N_tot, N_comm = 50, 3
-    edges, k = 150, 6
-    hMod, parHMod = gg.get_hierarchical_modular(N_tot, N_comm, edges, .92, 1)
-    mod, parMod = gg.get_random_modular(N_tot, N_comm, edges, .92)
+    betas = np.linspace(1e-3, .2, 15)
+    arg_1 = int(sys.argv[1]) - 1 # from 0 to 149
 
-    # gr.render_network(mod, 1)
-    # plt.savefig('mod.pdf')
-    # plt.figure(2)
-    # plt.hist(gg.get_degrees(mod),  bins = 50, density = True)
-    #
-    # mod = parMod(.5)
-    # gr.render_network(mod, 3)
-    # plt.savefig('mod.pdf')
-    #
-    # plt.figure(4)
-    # plt.hist(gg.get_degrees(hMod) , bins = 50, density = True)
+    beta_index = arg_1 % len(betas)
+    beta = betas[beta_index]
+    textbook_index = arg_1 // 15
 
-    SW, parSW = gg.small_world_parameterized(N_tot, k, 0)
-    SW = parSW(.5)
-    print(pd.DataFrame(SW))
-    graph_pos = nx.circular_layout(nx.from_numpy_matrix(SW))
-    for i in range(len(SW)):
-        if i % 2 == 0:
-            graph_pos[i] = (graph_pos[i][0] * 1.2, graph_pos[i][1] * 1.2)
-    gr.render_network(SW, 6, k = 6, graph_pos= graph_pos)
-    plt.savefig("ring_rewired_upd.pdf")
-    plt.show()
-    #plt.show()
-    # res, trials = 2, 2
-    # alpha = 1
-    # betas = np.linspace(1e-3, 1, 25)
-    # # arg_1 = int(sys.argv[1]) - 1
-    # arg_1 = 28
-    # beta = betas[arg_1 % len(betas)]
-    #
-    # if arg_1 >= len(betas):
-    #     p_vals, opts, scores_orig, scores_s = WS_trials(N_tot, k, res, trials, beta)
-    #     f = open(head_dir + str(arg_1 % len(betas)) + "_SW.txt", "w")
-    #     gg.printArrayToFile(p_vals, f)
-    #     gg.printArrayToFile(opts, f)
-    #     gg.printArrayToFile(scores_orig, f)
-    #     gg.printArrayToFile(scores_s, f)
-    # else:
-    #     frac_modules, mod_opts, hMod_opts, scores_mod_orig, \
-    #     scores_hMod_orig, scores_mod_s, scores_hMod_s = SBM_trials(N_tot, N_comm, edges, alpha, res, trials, beta)
-    #     f = open(head_dir + str(arg_1) + "_mod.txt", "w")
-    #     f2 = open(head_dir + str(arg_1) + "_hMod.txt", "w")
-    #     gg.printArrayToFile(frac_modules, f)
-    #     gg.printArrayToFile(mod_opts, f)
-    #     gg.printArrayToFile(scores_mod_orig, f)
-    #     gg.printArrayToFile(scores_mod_s, f)
-    #
-    #     gg.printArrayToFile(frac_modules, f2)
-    #     gg.printArrayToFile(hMod_opts, f2)
-    #     gg.printArrayToFile(scores_hMod_orig, f2)
-    #     gg.printArrayToFile(scores_hMod_s, f2)
+    #network0 = np.load(textbooks + "cooc_mats.npy", allow_pickle= True)
+    network0 = np.load("cooc_mats.npy", allow_pickle=True)
+    network0 = network0[textbook_index]
+    for i in range(len(network0)):
+        network0[i][i] = 0
+    A_0 = normalize(network0)
+
+    unweighted = deepcopy(network0)
+    unweighted[unweighted > 0] = 1
+
+    symInfo = get_pickleable_params(unweighted, include_nonexistent= False, force_unique= True)
+    numParams, parameterized = sm.getSymReducedParams(unweighted, include_nonexistent=False, force_unique= True)
+
+    A, score_original, score = optimize_learnability(A_0, network0, symInfo, parameterized, beta, include_nonexistent= False)
+
+    f = open(head_dir + str(textbook_index) + "_opt_networks.npy", "rb")
+    f_metrics = open(head_dir + str(textbook_index) + "_KL.npy", "rb")
+
+    networks = np.load(f, allow_pickle= True)
+    metrics = np.load(f_metrics, allow_pickle= True)
+
+    f.close()
+    f_metrics.close()
+
+    networks[beta_index] = A
+    metrics[beta_index] = [score, score_original]
+
+    f = open(head_dir + str(textbook_index) + "_opt_networks.npy", "wb")
+    f_metrics = open(head_dir + str(textbook_index) + "_KL.npy", "wb")
+
+    np.save(f, networks)
+    np.save(f_metrics, metrics)
+
+    f.close()
+    f_metrics.close()
+
+
+
+
+
 
 
 
