@@ -61,6 +61,29 @@ def process_all(name, num_betas, res):
             hmap_scores[i] = scores
     return param_vals, hmap_opts, hmap_scores_orig, hmap_scores
 
+def process_node_pos(fname, N):
+    f = open(fname, "r")
+    output = [[] for _ in range(N)]
+    for i in range(13):
+        f.readline()
+    for i in range(N):
+        for j in range(7):
+            curr = f.readline()
+        parts = curr.split(" ")
+        if len(parts) == 11:
+            return output
+        currID = int(parts[11][:-3])
+        for j in range(4):
+            f.readline()
+        x_parts = f.readline().split(" ")
+        y_parts = f.readline().split(" ")
+        x_coord = float(x_parts[-1][:-2])
+        y_coord = float(y_parts[-1][:-1])
+        output[currID].append(x_coord)
+        output[currID].append(y_coord)
+        for j in range(3):
+            f.readline()
+    return output
 
 if __name__ == '__main__':
 

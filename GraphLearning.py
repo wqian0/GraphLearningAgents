@@ -1,17 +1,23 @@
 import os
 import pickle as pk
 from copy import deepcopy
+import bct
 import copy
 import mynumpy as np
+import pydot
 import pandas as pd
 import networkx as nx
 import scipy as sp
 from scipy import optimize as op
 from scipy import stats
+from scipy.stats import binned_statistic
 import symmetries as sm
 import GenerateGraph as gg
 import GraphRender as gr
 import matplotlib.pyplot as plt
+import ProcessData as pr
+import graphviz
+os.environ["PATH"] += os.pathsep + 'C:/Users/billy/Downloads/graphviz-2.38/release/bin'
 import sys
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)
@@ -23,8 +29,8 @@ rng = np.random.RandomState()
 #seeded_rng = np.random.RandomState(17310145)
 seeded_rng = rng
 
-#head_dir = "C:/Users/billy/PycharmProjects/GraphLearningAgents/"
-head_dir = "/data/jux/bqqian/GraphLearning/"
+head_dir = "C:/Users/billy/PycharmProjects/GraphLearningAgents/"
+#head_dir = "/data/jux/bqqian/GraphLearning/"
 
 # languages = head_dir + "graphs_Language_share/"
 # music = head_dir + "graphs_Music_share/"
@@ -32,13 +38,17 @@ head_dir = "/data/jux/bqqian/GraphLearning/"
 # social = head_dir + "graphs_Social_share/"
 # citation = head_dir + "graphs_Citation_share/"
 # semantic = head_dir + "graphs_Semantic_share/"
-# textbooks = head_dir + "textbooks/"
+textbooks = head_dir + "textbooks/"
 
 def learn(A, beta):
     A = normalize(A)
     inverse_argument = np.identity(len(A)) - np.exp(-beta)*A
     inverse = sp.linalg.inv(inverse_argument)
     return normalize((1-np.exp(-beta))*(A @ inverse))
+def learn_to_undirected(A, beta, normalizer):
+    out = learn(A, beta)
+    out = unnormalize(out)
+    return normalizer * out / np.sum(out)
 
 def get_stationary(A):
     lam, vec = sp.linalg.eig(A, left=True, right=False)
@@ -258,9 +268,7 @@ def compute_triangle_participation(A):
     for c in cycles_3:
         for e in edges:
             if set(e).issubset(set(c)):
-                tri_count[(e[0], e[1])] += 1
-    for e in edges:
-        tri_count[(e[0], e[1])] /= min(np.count_nonzero(A[e[0]]) - 1, np.count_nonzero(A[e[1]]) - 1)
+                tri_count[(e[0], e[1])] += A[c[0]][c[1]] * A[c[0]][c[2]] * A[c[1]][c[2]]
     return edges, tri_count, len(cycles_3)
 
 def get_edge_values(A_original, A):
@@ -289,15 +297,17 @@ def get_optimal_directly(A_target, beta):
     inv = sp.linalg.inv(inv_argument)
     return inv @ A_target
 
-def optimize_learnability(network0, weighted, symmInfo, parameterized, beta, include_nonexistent, KL = True):
+def optimize_learnability(network0, weighted, symmInfo, parameterized, beta, include_nonexistent, KL = True, get_weights = False):
     numParams, comps, comps_c, inv_labels, inv_labels_c = symmInfo
     bounds = [(0, 1) for i in range(numParams)]
     outcome = op.dual_annealing(pickleable_cost_func, bounds=bounds,
         args=(comps, comps_c, inv_labels, inv_labels_c, beta, network0, include_nonexistent, KL, weighted),
-                                                                accept = -10, maxiter = 1000, maxfun= 1e6)
+                                                                accept = -20, maxiter = 1000, maxfun= 1.2e6)
     A = parameterized(outcome.x)
     score_original = KL_score(network0, beta)
     score = KL_score_external(A, beta, network0)
+    if get_weights:
+        return A, score_original, score, outcome.x
     return A, score_original, score
 
 def optimize_one_param_learnability(network0, parameterized, beta):
@@ -354,51 +364,290 @@ def SBM_trials(N_tot, N_comm, edges, alpha, frac_res, trials, beta):
         scores_mod_s /= trials
         scores_hMod_s /= trials
         return frac_modules, mod_opts, hMod_opts, scores_mod_orig, scores_hMod_orig, scores_mod_s, scores_hMod_s
+def all_core_periphery_avged(networks_orig, networks_opt):
+    output = np.zeros((15, 4))
+    output_std = np.zeros((15, 4))
+    classified = [[[], [], [], []] for _ in range(15)]
+    for j in range(10):
+        classifications, per_comm_assignments = core_periphery_analysis(networks_orig[j])
+        for i in range(15):
+            classified_vals = classify_vals(classifications, networks_orig[j], networks_opt[j][i], per_comm_assignments)
+            for k in range(len(classified_vals)):
+                classified[i][k].extend(classified_vals[k])
+    for i in range(15):
+        for k in range(4):
+            output[i][k] = np.mean(classified[i][k])
+            output_std[i][k] = np.std(classified[i][k])
+    return output, output_std
+def all_core_periphery(networks_orig, networks_opt):
+    output = np.zeros((10, 15, 4))
+    output_std = np.zeros((10, 15, 4))
+    for j in range(10):
+        classifications, per_comm_assignments = core_periphery_analysis(networks_orig[j])
+        for i in range(15):
+            classified_vals = classify_vals(classifications, networks_orig[j], networks_opt[j][i], per_comm_assignments)
+            for k in range(len(classified_vals)):
+                output[j][i][k] = np.mean(classified_vals[k])
+                output_std[j][i][k] = np.std(classified_vals[k])
+    return output, output_std
+def core_periphery_analysis(network0):
+    network0 /= np.sum(network0)
+    C, Q_core = bct.core_periphery_dir(network0)
+    per_nodes = []
+    for i in range(len(C)):
+        if C[i] == 0:
+            per_nodes.append(i)
+    G = nx.from_numpy_matrix(network0)
+    G_per = G.subgraph(per_nodes)
+    per_network = np.array(nx.to_numpy_matrix(G_per))
+    M_per, Q_comm_per = bct.community_louvain(per_network)
+    # print(M_per, Q_comm_per)
+    per_comm_assignments = {}
+    for i in range(len(per_nodes)):
+        per_comm_assignments[per_nodes[i]] = M_per[i]
+    classifications = [[], [], []] # index 0 means periphery-periphery edge, 1 means periphery-core, 2 means core-core
+    for i in range(len(network0) - 1):
+        for j in range(i+1, len(network0)):
+            if network0[i][j] > 0:
+                classifications[C[i] + C[j]].append((i, j))
+    return classifications, per_comm_assignments
 
+def classify_vals(classifications, network0, network_opt, per_comm_assignments):
+    classified_vals = [[], [], [],
+                       []]  # periphery-periphery intramod, periphery-periphery intermod, periphery-core, core-core
+    edge_factors = get_edge_values(network0, network_opt)
+    for j in range(len(classifications[0])):
+        e0, e1 = classifications[0][j]
+        if per_comm_assignments[e0] == per_comm_assignments[e1]:
+            classified_vals[0].append(edge_factors[classifications[0][j]])
+        else:
+            classified_vals[1].append(edge_factors[classifications[0][j]])
+    for i in range(1, 3):
+        for j in range(len(classifications[i])):
+            classified_vals[i + 1].append(edge_factors[classifications[i][j]])
+    return classified_vals
+
+def get_diff_stats(network0, network_opt):
+    edge_vals = []
+    tri_participation = []
+    betweenness = []
+    edge_degrees = []
+    network0 /= np.sum(network0)
+    network_opt /= np.sum(network_opt)
+    edges, tri_count, total_triangles = compute_triangle_participation(network0)
+    edge_factors = get_edge_values(network0, network_opt)
+    betweenness_dict = nx.centrality.edge_betweenness_centrality(nx.from_numpy_matrix(network0))
+    for i in range(len(edges)):
+        # if edge_factors[(edges[i][0], edges[i][1])] > 0:
+        edge_degrees.append(np.sum(network0[edges[i][0]]) + np.sum(network0[edges[i][1]]))
+        edge_vals.append(edge_factors[(edges[i][0], edges[i][1])])
+        tri_participation.append(tri_count[(edges[i][0], edges[i][1])])
+        betweenness.append(betweenness_dict[(edges[i][0], edges[i][1])])
+
+    classifications, per_comm_assignments = core_periphery_analysis(network0)
+    classified_vals = classify_vals(classifications, network0, network_opt, per_comm_assignments)
+
+    plt.figure(200, figsize = (5.5, 4.5))
+    plt.rcParams.update({'font.size': 16})
+    plt.xlabel("P-P intramodular edge weight scaling")
+    plt.ylabel("Probability density")
+    plt.rcParams.update({'font.size': 16})
+    plt.hist(classified_vals[0], bins=30, density = True, color = "tomato", linewidth = .6, edgecolor='black')
+    plt.tight_layout()
+    plt.figure(201, figsize = (5.5, 4.5))
+    plt.rcParams.update({'font.size': 16})
+    plt.xlabel("P-P intermodular edge weight scaling")
+    plt.ylabel("Probability density")
+    plt.rcParams.update({'font.size': 16})
+    plt.hist(classified_vals[1], bins=30, density = True, color = "lightgreen", linewidth = .6,  edgecolor='black')
+    plt.tight_layout()
+    plt.figure(202, figsize = (5.5, 4.5))
+    plt.rcParams.update({'font.size': 16})
+    plt.xlabel("P-C edge weight scaling")
+    plt.ylabel("Probability density")
+    plt.rcParams.update({'font.size': 16})
+    plt.hist(classified_vals[2], bins=30, density = True, color = "cadetblue", linewidth = .6,  edgecolor='black')
+    plt.tight_layout()
+    plt.figure(203, figsize = (5.5, 4.5))
+    plt.xlabel("C-C edge weight scaling")
+    plt.ylabel("Probability density")
+    plt.hist(classified_vals[3], bins=30, density=True, color="red", linewidth=.6, edgecolor='black')
+    plt.tight_layout()
+
+    #binned_vals, dividers, _ = binned_statistic(tri_participation, edge_vals, 'mean', bins=20)
+    #dividers = dividers[:-1]
+    plt.figure(5)
+    plt.rcParams.update({'font.size': 16})
+    #plt.scatter(dividers, binned_vals)
+    plt.scatter(tri_participation, edge_vals, s=10, alpha=.1)
+    plt.rcParams.update({'font.size': 16})
+    plt.xlabel("Edge clustering coefficient")
+    plt.ylabel("Optimal edge scaling")
+
+    gradient, intercept, r_value, p_value, std_err = stats.linregress(tri_participation, edge_vals)
+    print(r_value, p_value)
+    mn = np.amin(tri_participation)
+    mx = np.amax(tri_participation)
+    x1 = np.linspace(mn, mx, 500)
+    y1 = gradient * x1 + intercept
+    plt.plot(x1, y1, '-r')
+
+    # binned_vals, dividers, _ = binned_statistic(betweenness, edge_vals, 'mean', bins=10)
+    # dividers = dividers[:-1]
+    plt.figure(6)
+    plt.rcParams.update({'font.size': 16})
+    # plt.scatter(dividers, binned_vals)
+    plt.scatter(betweenness, edge_vals, s=10, alpha=.1)
+    plt.rcParams.update({'font.size': 16})
+    plt.xlabel('Edge betweenness centrality')
+    plt.ylabel("Optimal edge scaling")
+
+    gradient, intercept, r_value, p_value, std_err = stats.linregress(betweenness, edge_vals)
+    print(r_value, p_value)
+    mn = np.amin(betweenness)
+    mx = np.amax(betweenness)
+    x1 = np.linspace(mn, mx, 500)
+    y1 = gradient * x1 + intercept
+    plt.plot(x1, y1, '-r')
+
+def numberToBase(n, b):
+    if n == 0:
+        return [0]
+    digits = []
+    while n:
+        digits.append(int(n % b))
+        n //= b
+    return digits[::-1]
 
 if __name__ == '__main__':
     betas = np.linspace(1e-3, .2, 15)
-    arg_1 = int(sys.argv[1]) - 1 # from 0 to 149
-
-    beta_index = arg_1 % len(betas)
+    beta_index = 6
+    textbook_index = 7
+    #arg_1 = 0
+    # arg_1 = int(sys.argv[1]) - 1 # from 0 to 149
+    # beta_index = arg_1 % len(betas)
+    # textbook_index = arg_1 // 15
     beta = betas[beta_index]
-    textbook_index = arg_1 // 15
 
-    #network0 = np.load(textbooks + "cooc_mats.npy", allow_pickle= True)
-    network0 = np.load("cooc_mats.npy", allow_pickle=True)
-    network0 = network0[textbook_index]
-    for i in range(len(network0)):
-        network0[i][i] = 0
-    A_0 = normalize(network0)
+    A_0 = gg.regularized_sierpinski(3,5)
+    np.savetxt("sierpinski.txt", A_0)
+    symInfo = get_pickleable_params(A_0, include_nonexistent= False, force_unique= False)
+    numParams, parameterized = sm.getSymReducedParams(A_0, include_nonexistent=False, force_unique=False)
+    print(numParams)
+    A, score_original, score = optimize_learnability(A_0, A_0, symInfo, parameterized, beta,
+                                                     include_nonexistent=False)
+    print(score_original, score)
+    # graph_pos = nx.drawing.nx_pydot.graphviz_layout(nx.from_numpy_matrix(A_0), prog = 'sfdp')
+    # graph_pos = nx.kamada_kawai_layout(nx.from_numpy_matrix(A_0))
+    # graph_pos = nx.spring_layout(nx.from_numpy_matrix(A_0))
+    graph_pos = pr.process_node_pos("sierpinski.txt.cyjs", 243)
+    gr.render_network(A_0, 0, graph_pos = graph_pos)
+    learned = unnormalize(learn(A_0, beta))
+    learned /= np.sum(learned)
+    learned *= np.sum(A_0)
+    gr.render_network(learned, 1, graph_pos = graph_pos)
+    gr.render_network(A, 2, graph_pos = graph_pos)
+        # learned = unnormalize(learn(A, beta))
+        # learned /= np.sum(learned)
+        # learned *= np.sum(A_0)
+        # gr.render_network(learned, 3, graph_pos=graph_pos)
+        # get_diff_stats(A_0, A)
+    plt.show()
 
-    unweighted = deepcopy(network0)
-    unweighted[unweighted > 0] = 1
+    # indices = np.load(textbooks+"all_index.npy", allow_pickle= True)
+    # networks_orig = np.load(textbooks + "cooc_mats.npy", allow_pickle= True)
+    # for i in range(len(networks_orig)):
+    #     for j in range(len(networks_orig[i])):
+    #         networks_orig[i][j][j] = 0
+    # for i in range(len(networks_orig)):
+    #     networks_orig[i] /= np.sum(networks_orig[i])
+    #     #networks_orig[i] = normalize(networks_orig[i])
+    #
+    #
+    # networks = []
+    # scores = []
+    # for i in range(10):
+    #     networks.append(np.load(textbooks + str(i)+"_opt_networks.npy", allow_pickle= True))
+    #     scores.append(np.load(textbooks + str(i)+"_KL.npy", allow_pickle= True))
+    # for i in range(len(networks)):
+    #     for j in range(len(betas)):
+    #         networks[i][j] /= np.sum(networks[i][j])
+    #
+    # markers = ["o", "+", "*", "D", "x", "d", "^", "s", "v", ">"]
+    # colors = ["orange", "sienna", "limegreen", "deepskyblue", "steelblue", "purple", "lightseagreen", "darkgrey", "black", "red"]
+    # names = ["Treil", "Axler", "Edwards", "Lang", "Petersen", "Robbiano", "Bretscher", "Greub", "Hefferson", "Strang"]
+    #
+    # np.random.shuffle(colors)
+    # plt.figure(100, figsize=(6.5, 4.5))
+    # plt.rcParams.update({'font.size': 16})
+    # plt.xlabel(r'$\beta$')
+    # plt.ylabel('KL Divergence Ratio')
+    # plt.rcParams.update({'font.size': 16})
+    # for i in [0,1,2,3,4,5,6,7,8,9]:
+    #     # plt.ylim([0.25, 1.7])
+    #     plt.scatter(betas, scores[i][:, 0]/ scores[i][:, 1], s = 30, alpha = .7, color = colors[i], marker = markers[i], label = names[i])
+    #     plt.plot(betas, scores[i][:, 0]/ scores[i][:, 1], linewidth = .6, color=colors[i])
+    #     plt.legend(frameon=False, prop={'size': 12}, labelspacing=.2, handletextpad=0, borderpad = 0, loc='center left', bbox_to_anchor=(1, 0.5))
+    # plt.tight_layout()
+    # network0 = networks_orig[textbook_index]
+    # network_opt = networks[textbook_index][beta_index]
+    # get_diff_stats(network0, network_opt)
+    #
+    # CPData, stdev = all_core_periphery(networks_orig, networks)
+    # for i in range(10):
+    #     plt.figure(300 + i)
+    #     for k in range(4):
+    #         plt.scatter(betas, CPData[i, :, k], s = 30, alpha = .7, color = colors[k], label = str(k))
+    #         plt.plot(betas, CPData[i, :, k], linewidth = .6, color = colors[k])
+    #         #plt.errorbar(betas, CPData[i, :, k], yerr = stdev[i,:, k], capsize= 5, ecolor = colors[k])
+    #         #plt.fill_between(betas, CPData[i, :, k] - stdev[i, :, k], CPData[i, :, k] + stdev[i, :, k], alpha = .2)
+    #         plt.legend()
+    #
+    # CPData_all, stdev_all = all_core_periphery_avged(networks_orig, networks)
+    # plt.figure(300 + i)
+    # for k in range(4):
+    #     plt.scatter(betas, CPData_all[:, k], s=30, alpha=.7, color=colors[k], label=str(k))
+    #     plt.plot(betas, CPData_all[:, k], linewidth=.6, color=colors[k])
+    #   #  plt.fill_between(betas, CPData_all[:, k] - stdev_all[:, k], CPData_all[:, k] + stdev_all[:, k], alpha=.2)
+    #     plt.legend()
+    # # plt.yscale('log')
+    # plt.show()
 
-    symInfo = get_pickleable_params(unweighted, include_nonexistent= False, force_unique= True)
-    numParams, parameterized = sm.getSymReducedParams(unweighted, include_nonexistent=False, force_unique= True)
-
-    A, score_original, score = optimize_learnability(A_0, network0, symInfo, parameterized, beta, include_nonexistent= False)
-
-    f = open(head_dir + str(textbook_index) + "_opt_networks.npy", "rb")
-    f_metrics = open(head_dir + str(textbook_index) + "_KL.npy", "rb")
-
-    networks = np.load(f, allow_pickle= True)
-    metrics = np.load(f_metrics, allow_pickle= True)
-
-    f.close()
-    f_metrics.close()
-
-    networks[beta_index] = A
-    metrics[beta_index] = [score, score_original]
-
-    f = open(head_dir + str(textbook_index) + "_opt_networks.npy", "wb")
-    f_metrics = open(head_dir + str(textbook_index) + "_KL.npy", "wb")
-
-    np.save(f, networks)
-    np.save(f_metrics, metrics)
-
-    f.close()
-    f_metrics.close()
+    # #network0 = np.load(textbooks + "cooc_mats.npy", allow_pickle= True)
+    # network0 = np.load("cooc_mats.npy", allow_pickle=True)
+    # network0 = network0[textbook_index]
+    # for i in range(len(network0)):
+    #     network0[i][i] = 0
+    # A_0 = normalize(network0)
+    #
+    # unweighted = deepcopy(network0)
+    # unweighted[unweighted > 0] = 1
+    #
+    # symInfo = get_pickleable_params(unweighted, include_nonexistent= False, force_unique= True)
+    # numParams, parameterized = sm.getSymReducedParams(unweighted, include_nonexistent=False, force_unique= True)
+    #
+    # A, score_original, score = optimize_learnability(A_0, network0, symInfo, parameterized, beta, include_nonexistent= False)
+    #
+    # f = open(head_dir + str(textbook_index) + "_opt_networks.npy", "rb")
+    # f_metrics = open(head_dir + str(textbook_index) + "_KL.npy", "rb")
+    #
+    # networks = np.load(f, allow_pickle= True)
+    # metrics = np.load(f_metrics, allow_pickle= True)
+    #
+    # f.close()
+    # f_metrics.close()
+    #
+    # networks[beta_index] = A
+    # metrics[beta_index] = [score, score_original]
+    #
+    # f = open(head_dir + str(textbook_index) + "_opt_networks.npy", "wb")
+    # f_metrics = open(head_dir + str(textbook_index) + "_KL.npy", "wb")
+    #
+    # np.save(f, networks)
+    # np.save(f_metrics, metrics)
+    #
+    # f.close()
+    # f_metrics.close()
 
 
 

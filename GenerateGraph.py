@@ -460,6 +460,33 @@ def small_world_parameterized(N_tot, k, p, getLatticeInfo = False):
         return A, parameterized, non_lattice_edges
     return A, parameterized
 
+def sierpinski_generator(n, p): #generates a generalized Sierpinski graph with n hierarchical levels and p communities
+    A = np.zeros((p ** n, p ** n))
+    for k in range(n):
+        for i in range(p):
+            for j in range(p):
+                for m in range(p ** (n - k - 1)):
+                    if i != j:
+                        e0 = m * (p ** (k + 1)) + i * (p ** k)  + j * ((p ** k) - 1) // (p - 1)
+                        e1 = m * (p ** (k + 1)) + j * (p ** k) + i * ((p ** k) - 1) // (p - 1)
+                        A[e0][e1] = 1
+    return A
+
+def regularized_sierpinski(n, p):
+    A = np.zeros((p ** n + p ** (n-1), p ** n + p ** (n-1)))
+    A_nonreg = sierpinski_generator(n, p)
+    A_nonreg2 = sierpinski_generator(n-1, p)
+    for i in range(len(A_nonreg)):
+        for j in range(len(A_nonreg)):
+            A[i][j] = A_nonreg[i][j]
+    for i in range(len(A_nonreg2)):
+        for j in range(len(A_nonreg2)):
+            A[len(A_nonreg) + i][len(A_nonreg) + j] = A_nonreg2[i][j]
+    for i in range(p):
+        e0 = len(A_nonreg) + i * (p ** (n-1) - 1) // (p - 1)
+        e1 = i * (p ** (n) - 1 )// (p - 1)
+        A[e0][e1], A[e1][e0] = 1, 1
+    return A
 def printArrayToFile(A, file):
     for r in range(len(A)):
         file.write(str(A[r]) + "\t")

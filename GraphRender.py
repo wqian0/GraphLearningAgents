@@ -87,13 +87,14 @@ def get_colors(A):
     G_temp =nx.from_numpy_matrix(A)
     edgecolor = []
     for (u, v, d) in G_temp.edges(data = True):
-        if d['weight'] == 0.5:
-            edgecolor.append('grey')
-           # edgecolor.append('forestgreen')
-            #edgecolor.append((0, 0.6, 0, 1))
-        else:
-            edgecolor.append('grey')
-            #edgecolor.append((0, 0, 0, 1))
+        edgecolor.append('grey')
+        # if d['weight'] == 0.5:
+        #     edgecolor.append('grey')
+        #    # edgecolor.append('forestgreen')
+        #     #edgecolor.append((0, 0.6, 0, 1))
+        # else:
+        #     edgecolor.append('grey')
+        #     #edgecolor.append((0, 0, 0, 1))
     return edgecolor
 
 def render_network(input, fignum, graph_pos = None, k = 1):
@@ -101,8 +102,8 @@ def render_network(input, fignum, graph_pos = None, k = 1):
     G_0 = nx.from_numpy_matrix(input)
     d = dict(G_0.degree)
     if not graph_pos:
-        graph_pos = nx.spring_layout(G_0, iterations = 2000, k = k)
-    edgewidth = [.05 * max(1, 1* d['weight']**1)  for (u, v, d) in G_0.edges(data=True)]
+        graph_pos = nx.spring_layout(G_0, iterations = 100000, threshold= 0, k = 1)
+    edgewidth = [max(0, d['weight'])  for (u, v, d) in G_0.edges(data=True)]
     #edgecolor = [(0.2, 0.2, 0.2, min(.8  * d['weight'], 1))  for (u, v, d) in G_0.edges(data=True)]
     edgecolor = get_colors(input)
     # edgecolor = ['blue' for e in G_0.edges]
