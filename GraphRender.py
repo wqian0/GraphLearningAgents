@@ -87,15 +87,15 @@ def get_colors(A):
     G_temp =nx.from_numpy_matrix(A)
     edgecolor = []
     for (u, v, d) in G_temp.edges(data = True):
-        edgecolor.append('grey')
-       #  if d['weight'] == .2:
-       #      edgecolor.append('grey')
-       #  if d['weight'] == 1:
-       #      edgecolor.append('orange')
-       #  if d['weight'] == 2:
-       #      edgecolor.append('blue')
-       #  if d['weight'] == 4:
-       #      edgecolor.append('forestgreen')
+        #edgecolor.append('grey')
+        if d['weight'] == .2:
+            edgecolor.append('grey')
+        if d['weight'] == 1:
+            edgecolor.append('orange')
+        if d['weight'] == 2:
+            edgecolor.append('blue')
+        if d['weight'] == 4:
+            edgecolor.append('forestgreen')
 
         # if d['weight'] == 0.5:
         #     edgecolor.append('grey')
@@ -112,11 +112,11 @@ def render_network(input, fignum, graph_pos = None, k = 1, nodecolors = None):
     d = dict(G_0.degree)
     if not graph_pos:
         graph_pos = nx.spring_layout(G_0, iterations = 1000, k = k)
-    edgewidth = [ d['weight']  for (u, v, d) in G_0.edges(data=True)]
-    # edgewidth = [.8 for (u, v, d) in G_0.edges(data=True)]
+    edgewidth = [ max(.5, d['weight'])  for (u, v, d) in G_0.edges(data=True)]
+    #edgewidth = [.8 for (u, v, d) in G_0.edges(data=True)]
     #edgecolor = [(0.2, 0.2, 0.2, min(.8  * d['weight'], 1))  for (u, v, d) in G_0.edges(data=True)]
-    edgecolor = get_colors(input)
-    edgewidth = [max(.5, 1 * abs(d['weight']) ** 1) for (u, v, d) in G_0.edges(data=True)]
+    #edgecolor = get_colors(input)
+    #edgewidth = [max(.5, 1 * abs(d['weight']) ** 1) for (u, v, d) in G_0.edges(data=True)]
     edgecolor = [(0, 0, 0, max(.008, min(.8 * d['weight'], 1))) for (u, v, d) in G_0.edges(data=True)]
     # edgecolor = ['blue' for e in G_0.edges]
     #nx.draw_networkx(G_0, graph_pos, width=np.zeros(len(input)), with_labels= False, node_color = 'lightblue', node_size = [v  * 30 for v in d.values()])
@@ -127,5 +127,6 @@ def render_network(input, fignum, graph_pos = None, k = 1, nodecolors = None):
     nx.draw_networkx_edges(G_0, graph_pos, edge_color=edgecolor, width=edgewidth)
     ax = plt.gca()
     ax.collections[0].set_edgecolor("#000000")
+    ax.collections[0].set_linewidth(.5)
     plt.axis('off')
     return graph_pos

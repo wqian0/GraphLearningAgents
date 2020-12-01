@@ -39,7 +39,7 @@ head_dir = "C:/Users/billy/PycharmProjects/GraphLearningAgents/"
 # social = head_dir + "graphs_Social_share/"
 # citation = head_dir + "graphs_Citation_share/"
 # semantic = head_dir + "graphs_Semantic_share/"
-textbooks = head_dir + "textbooks/"
+textbooks = head_dir + "textbooks2/"
 
 def learn(A, beta):
     A = normalize(A)
@@ -370,16 +370,16 @@ def all_core_periphery_avged(networks_orig, networks_opt):
     output_std = np.zeros((15, 4))
     classified = [[[], [], [], []] for _ in range(15)]
     for j in range(10):
-        classifications, per_comm_assignments = core_periphery_analysis(networks_orig[j])
+        classifications, per_comm_assignments, _, _ = core_periphery_analysis(networks_orig[j])
         for i in range(15):
-            classified_vals = classify_vals(classifications, networks_orig[j], networks_opt[j][i], per_comm_assignments)
+            classified_vals, _ = classify_vals(classifications, networks_orig[j], networks_opt[j][i], per_comm_assignments)
             for k in range(len(classified_vals)):
                 classified[i][k].extend(classified_vals[k])
     for i in range(15):
         for k in range(4):
             output[i][k] = np.mean(classified[i][k])
             output_std[i][k] = np.std(classified[i][k])
-    return output, output_std
+    return output, output_std, classified
 def all_core_periphery(networks_orig, networks_opt):
     output = np.zeros((10, 15, 4))
     output_std = np.zeros((10, 15, 4))
@@ -445,123 +445,129 @@ def get_diff_stats(network0, network_opt):
     betweenness_dict = nx.centrality.edge_betweenness_centrality(nx.from_numpy_matrix(network0), weight = 'weight')
     for i in range(len(edges)):
         # if edge_factors[(edges[i][0], edges[i][1])] > 0:
-        edge_degrees.append(np.sum(network0[edges[i][0]]) + np.sum(network0[edges[i][1]]))
+        edge_degrees.append(.5 * (np.sum(network0[edges[i][0]]) + np.sum(network0[edges[i][1]])))
         edge_vals.append(edge_factors[(edges[i][0], edges[i][1])])
         tri_participation.append(tri_count[(edges[i][0], edges[i][1])])
         betweenness.append(betweenness_dict[(edges[i][0], edges[i][1])])
 
-    classifications, per_comm_assignments, G_per, M_per = core_periphery_analysis(network0)
-    classified_vals, classified_edges = classify_vals(classifications, network0, network_opt, per_comm_assignments)
+    # classifications, per_comm_assignments, G_per, M_per = core_periphery_analysis(network0)
+    # classified_vals, classified_edges = classify_vals(classifications, network0, network_opt, per_comm_assignments)
+    #
+    # # A = np.zeros((len(network0), len(network0)))
+    # # for i in range(4):
+    # #     if i == 0:
+    # #         val = .2
+    # #     if i == 1:
+    # #         val = 1
+    # #     if i == 2:
+    # #         val = 2
+    # #     if i == 3:
+    # #         val = 4
+    # #     for j in range(len(classified_edges[i])):
+    # #         e0, e1 = classified_edges[i][j]
+    # #         A[e0][e1], A[e1][e0] = val, val
+    # # print("IM RENDERING BRO")
+    # # gr.render_network(A, 10)
+    # # X, Y = bct.grid_communities(M_per)
+    # # print(X, Y)
+    # per_network = nx.to_numpy_matrix(G_per)
+    # per_network /= np.sum(per_network)
+    # layout_mask = np.zeros((len(per_network), len(per_network)))
+    # for i in range(len(layout_mask)):
+    #     for j in range(len(layout_mask)):
+    #         if M_per[i] == M_per[j] and i != j:
+    #             layout_mask[i][j] = 1
+    #
+    # graph_pos = nx.spring_layout(nx.from_numpy_matrix(layout_mask), k = .45)
+    # gr.render_network(per_network,11, graph_pos = graph_pos, nodecolors= .25 * np.array(M_per))
+    # plt.figure(200, figsize = (4.4, 3.6))
+    # plt.rcParams.update({'font.size': 16})
+    # plt.xlabel("P-P within-cluster weight scaling", fontsize = 14)
+    # plt.ylabel("Probability density")
+    # plt.rcParams.update({'font.size': 16})
+    # plt.hist(classified_vals[0], bins=30, density = True, color = "tomato", linewidth = .6, edgecolor='black')
+    # plt.tight_layout()
+    # plt.figure(201, figsize = (4.4, 3.6))
+    # plt.rcParams.update({'font.size': 16})
+    # plt.xlabel("P-P cross-cluster weight scaling", fontsize = 14)
+    # plt.ylabel("Probability density")
+    # plt.rcParams.update({'font.size': 16})
+    # plt.hist(classified_vals[1], bins=30, density = True, color = "lightgreen", linewidth = .6,  edgecolor='black')
+    # plt.tight_layout()
+    # plt.figure(202, figsize = (4.4, 3.6))
+    # plt.rcParams.update({'font.size': 16})
+    # plt.xlabel("P-C weight scaling")
+    # plt.ylabel("Probability density")
+    # plt.rcParams.update({'font.size': 16})
+    # plt.hist(classified_vals[2], bins=30, density = True, color = "cornflowerblue", linewidth = .6,  edgecolor='black')
+    # plt.tight_layout()
+    # plt.figure(203, figsize = (4.4, 3.6))
+    # plt.xlabel("C-C weight scaling")
+    # plt.ylabel("Probability density")
+    # plt.hist(classified_vals[3], bins=30, density=True, color="grey", linewidth=.6, edgecolor='black')
+    # plt.tight_layout()
 
-    # A = np.zeros((len(network0), len(network0)))
-    # for i in range(4):
-    #     if i == 0:
-    #         val = .2
-    #     if i == 1:
-    #         val = 1
-    #     if i == 2:
-    #         val = 2
-    #     if i == 3:
-    #         val = 4
-    #     for j in range(len(classified_edges[i])):
-    #         e0, e1 = classified_edges[i][j]
-    #         A[e0][e1], A[e1][e0] = val, val
-    # print("IM RENDERING BRO")
-    # gr.render_network(A, 10)
-    # X, Y = bct.grid_communities(M_per)
-    # print(X, Y)
-    per_network = nx.to_numpy_matrix(G_per)
-    per_network /= np.sum(per_network)
-    layout_mask = np.zeros((len(per_network), len(per_network)))
-    for i in range(len(layout_mask)):
-        for j in range(len(layout_mask)):
-            if M_per[i] == M_per[j] and i != j:
-                layout_mask[i][j] = 1
-
-    graph_pos = nx.spring_layout(nx.from_numpy_matrix(layout_mask), k = .45)
-    gr.render_network(per_network,11, graph_pos = graph_pos, nodecolors= .25 * np.array(M_per))
-    plt.figure(200, figsize = (4.4, 3.6))
-    plt.rcParams.update({'font.size': 16})
-    plt.xlabel("P-P within-cluster weight scaling", fontsize = 14)
-    plt.ylabel("Probability density")
-    plt.rcParams.update({'font.size': 16})
-    plt.hist(classified_vals[0], bins=30, density = True, color = "tomato", linewidth = .6, edgecolor='black')
-    plt.tight_layout()
-    plt.figure(201, figsize = (4.4, 3.6))
-    plt.rcParams.update({'font.size': 16})
-    plt.xlabel("P-P cross-cluster weight scaling", fontsize = 14)
-    plt.ylabel("Probability density")
-    plt.rcParams.update({'font.size': 16})
-    plt.hist(classified_vals[1], bins=30, density = True, color = "lightgreen", linewidth = .6,  edgecolor='black')
-    plt.tight_layout()
-    plt.figure(202, figsize = (4.4, 3.6))
-    plt.rcParams.update({'font.size': 16})
-    plt.xlabel("P-C weight scaling")
-    plt.ylabel("Probability density")
-    plt.rcParams.update({'font.size': 16})
-    plt.hist(classified_vals[2], bins=30, density = True, color = "cornflowerblue", linewidth = .6,  edgecolor='black')
-    plt.tight_layout()
-    plt.figure(203, figsize = (4.4, 3.6))
-    plt.xlabel("C-C weight scaling")
-    plt.ylabel("Probability density")
-    plt.hist(classified_vals[3], bins=30, density=True, color="grey", linewidth=.6, edgecolor='black')
-    plt.tight_layout()
-
-    #binned_vals, dividers, _ = binned_statistic(tri_participation, edge_vals, 'mean', bins=20)
-    #dividers = dividers[:-1]
-    plt.figure(5)
-    plt.rcParams.update({'font.size': 16})
-    #plt.scatter(dividers, binned_vals)
-    plt.scatter(tri_participation, edge_vals, s=10, alpha=.1)
-    plt.rcParams.update({'font.size': 16})
-    plt.xlabel("Edge clustering coefficient")
-    plt.ylabel("Optimal edge scaling")
-
-    # gradient, intercept, r_value, p_value, std_err = stats.linregress(tri_participation, edge_vals)
+    # #binned_vals, dividers, _ = binned_statistic(tri_participation, edge_vals, 'mean', bins=20)
+    # #dividers = dividers[:-1]
+    # plt.figure(5)
+    # plt.rcParams.update({'font.size': 16})
+    # #plt.scatter(dividers, binned_vals)
+    # plt.scatter(tri_participation, edge_vals, s=10, alpha=.1)
+    # plt.rcParams.update({'font.size': 16})
+    # plt.xlabel("Edge clustering coefficient")
+    # plt.ylabel("Optimal edge scaling")
+    #
+    # # gradient, intercept, r_value, p_value, std_err = stats.linregress(tri_participation, edge_vals)
+    # # print(r_value, p_value)
+    # # mn = np.amin(tri_participation)
+    # # mx = np.amax(tri_participation)
+    # # x1 = np.linspace(mn, mx, 500)
+    # # y1 = gradient * x1 + intercept
+    # # plt.plot(x1, y1, '-r')
+    #
+    # # binned_vals, dividers, _ = binned_statistic(betweenness, edge_vals, 'mean', bins=10)
+    # # dividers = dividers[:-1]
+    # plt.figure(6)
+    # plt.rcParams.update({'font.size': 16})
+    # # plt.scatter(dividers, binned_vals)
+    # plt.scatter(betweenness, edge_vals, s=10, alpha=.1)
+    # plt.rcParams.update({'font.size': 16})
+    # plt.xlabel('Edge betweenness centrality')
+    # plt.ylabel("Optimal edge scaling")
+    #
+    # gradient, intercept, r_value, p_value, std_err = stats.linregress(betweenness, edge_vals)
     # print(r_value, p_value)
-    # mn = np.amin(tri_participation)
-    # mx = np.amax(tri_participation)
+    # mn = np.amin(betweenness)
+    # mx = np.amax(betweenness)
     # x1 = np.linspace(mn, mx, 500)
     # y1 = gradient * x1 + intercept
     # plt.plot(x1, y1, '-r')
 
-    # binned_vals, dividers, _ = binned_statistic(betweenness, edge_vals, 'mean', bins=10)
-    # dividers = dividers[:-1]
-    plt.figure(6)
-    plt.rcParams.update({'font.size': 16})
-    # plt.scatter(dividers, binned_vals)
-    plt.scatter(betweenness, edge_vals, s=10, alpha=.1)
-    plt.rcParams.update({'font.size': 16})
-    plt.xlabel('Edge betweenness centrality')
-    plt.ylabel("Optimal edge scaling")
-
-    gradient, intercept, r_value, p_value, std_err = stats.linregress(betweenness, edge_vals)
-    print(r_value, p_value)
-    mn = np.amin(betweenness)
-    mx = np.amax(betweenness)
-    x1 = np.linspace(mn, mx, 500)
-    y1 = gradient * x1 + intercept
-    plt.plot(x1, y1, '-r')
-
     data = list(zip(edge_degrees, edge_vals))
+    return data
     # data = list(zip(tri_participation, edge_vals))
-    data.sort()
-    print(data)
-    bin_size = 200
-    new_pairs = []
-    while j < len(data):
-        count, x, y = 0, 0, 0
-        while count < bin_size and j + count < len(data):
-            x += data[j + count][0]
-            y += data[j + count][1]
-            count += 1
-        if count < bin_size:
-            break
-        new_pairs.append((x / (count - 1), y / (count - 1)))
-        j += count
-    new_pairs = np.array(new_pairs)
-    plt.figure(7)
-    plt.scatter(new_pairs[:, 0], new_pairs[:, 1])
+    # data.sort()
+    # print(data)
+    # bin_size = 300
+    # new_pairs = []
+    # stdev_pairs = []
+    # j = 0
+    # while j < len(data):
+    #     count, x, y = 0, [], []
+    #     while count < bin_size and j + count < len(data):
+    #         x.append(data[j + count][0])
+    #         y.append(data[j + count][1])
+    #         count += 1
+    #     if count < bin_size:
+    #         break
+    #     new_pairs.append((np.mean(x), np.mean(y)))
+    #     stdev_pairs.append((np.std(x), np.std(y)))
+    #     j += count
+    # new_pairs = np.array(new_pairs)
+    # stdev_pairs = np.array(stdev_pairs)
+    # plt.figure(7)
+    # #plt.scatter(new_pairs[:, 0], new_pairs[:, 1])
+    # #plt.errorbar(new_pairs[:, 0], new_pairs[:, 1], xerr = stdev_pairs[:,0], yerr=stdev_pairs[:,1], fmt='o', capsize = 2, elinewidth= .5)
 
 def numberToBase(n, b):
     if n == 0:
@@ -582,140 +588,215 @@ if __name__ == '__main__':
     # textbook_index = arg_1 // 15
     beta = betas[beta_index]
 
-    A_0 = gg.regularized_sierpinski(3,5)
-    symInfo = get_pickleable_params(A_0, include_nonexistent= False, force_unique= False)
-    numParams, parameterized = sm.getSymReducedParams(A_0, include_nonexistent=False, force_unique=False)
-    betas2 = np.linspace(1e-3, 1, 150)
-    # outcomes = np.zeros((len(betas2), numParams))
-    # scores = np.zeros((len(betas2), 2))
-    # for i in range(len(betas2)):
-    #     A, score_original, score, weights = optimize_learnability(A_0, A_0, symInfo, parameterized, betas2[i],
-    #                                                  include_nonexistent=False, get_weights = True)
-    #     outcomes[i] = weights
-    #     outcomes[i] /= weights[0]
-    #     scores[i][0] = score_original
-    #     scores[i][1] = score
-    #     print(i, score_original, score, outcomes[i])
-    # pk.dump([betas, outcomes, scores], open("betas_outcomes_scores_sierpinski_150.pk", "wb"))
-    betas, outcomes, scores = pk.load(open("betas_outcomes_scores_sierpinski_150.pk", "rb"))
-    plt.figure()
-    plt.rcParams.update({'font.size': 16})
-  #  plt.plot(betas2, outcomes[:, 0], color = "grey", linewidth = .7)
-    plt.plot(betas2, outcomes[:, 1], color = "orange", linewidth = 1, label = r'$\lambda _{cc}^1$')
-  #  plt.plot(betas2, outcomes[:, 2], color = "blue", linewidth = .7)
-    plt.plot(betas2, outcomes[:, 3], color = "forestgreen", linewidth = 1, label = r'$\lambda _{b}^1$')
-    plt.legend(frameon = False)
+  #   A_0 = gg.regularized_sierpinski(3,5)
+  #   symInfo = get_pickleable_params(A_0, include_nonexistent= False, force_unique= False)
+  #   numParams, parameterized = sm.getSymReducedParams(A_0, include_nonexistent=False, force_unique=False)
+  #   betas2 = np.linspace(1e-3, 1, 150)
+  #   # outcomes = np.zeros((len(betas2), numParams))
+  #   # scores = np.zeros((len(betas2), 2))
+  #   # for i in range(len(betas2)):
+  #   #     A, score_original, score, weights = optimize_learnability(A_0, A_0, symInfo, parameterized, betas2[i],
+  #   #                                                  include_nonexistent=False, get_weights = True)
+  #   #     outcomes[i] = weights
+  #   #     outcomes[i] /= weights[0]
+  #   #     scores[i][0] = score_original
+  #   #     scores[i][1] = score
+  #   #     print(i, score_original, score, outcomes[i])
+  #   # pk.dump([betas, outcomes, scores], open("betas_outcomes_scores_sierpinski_150.pk", "wb"))
+  #   betas, outcomes, scores = pk.load(open("betas_outcomes_scores_sierpinski_150.pk", "rb"))
+  #   plt.figure(figsize = (5.5,4.5))
+  #   plt.rcParams.update({'font.size': 16})
+  # #  plt.plot(betas2, outcomes[:, 0], color = "grey", linewidth = .7)
+  #   plt.plot(betas2, outcomes[:, 1], color = "orange", linewidth = 1, label = r'$\lambda _{cc}^2$')
+  # #  plt.plot(betas2, outcomes[:, 2], color = "blue", linewidth = .7)
+  #   plt.plot(betas2, outcomes[:, 3], color = "forestgreen", linewidth = 1, label = r'$\lambda _{b}^2$')
+  #   plt.legend(frameon = False)
+  #   plt.rcParams.update({'font.size': 16})
+  #   plt.xlabel(r'$\beta$')
+  #   plt.ylabel('Optimal level-2 weights')
+  #   plt.tight_layout()
+  #
+  #   plt.figure(figsize = (5.5,4.5))
+  #   ax = plt.gca()
+  #   plt.rcParams.update({'font.size': 16})
+  #   plt.plot(betas2, outcomes[:,3] - outcomes[:,0], color = "firebrick", label = r'$\lambda _{b}^2 - \lambda _{b}^3$')
+  #   plt.plot(betas2, outcomes[:,1] - outcomes[:,2],  color = "cadetblue", label = r'$\lambda_{cc}^2 - \lambda _{cc}^3$')
+  #   plt.legend(frameon = False)
+  #   plt.rcParams.update({'font.size': 16})
+  #   plt.xlabel(r'$\beta$')
+  #   plt.ylabel('Optimal cross-level weight diff.')
+  #   plt.ticklabel_format(axis = 'y', style = 'sci')
+  #   ax.yaxis.major.formatter.set_powerlimits((0, 0))
+  #   ax.yaxis.major.formatter._useMathText = True
+  #   plt.tight_layout()
+  #
+  #   plt.figure(figsize = (5.5,4.5))
+  #   plt.rcParams.update({'font.size': 16})
+  #   plt.plot(betas2, scores[:, 0], color = "lightgrey", label='Original ('+r'$A_{in} = A$'+')')
+  #   plt.plot(betas2, scores[:, 1], color = "black", label='Optimized (' + r'$A_{in} = A^{*}$' + ')')
+  #   plt.rcParams.update({'font.size': 16})
+  #   plt.xlabel(r'$\beta$')
+  #   plt.ylabel('KL Divergence, ' + r'$D_{KL}(A||f(A_{in}))$')
+  #   plt.legend(frameon = False)
+  #   plt.tight_layout()
+  #
+  #   #A_0 = parameterized([0.2,1,2,4])
+  #   # graph_pos = nx.drawing.nx_pydot.graphviz_layout(nx.from_numpy_matrix(A_0), prog = 'sfdp')
+  #   # graph_pos = nx.kamada_kawai_layout(nx.from_numpy_matrix(A_0))
+  #   # graph_pos = nx.spring_layout(nx.from_numpy_matrix(A_0))
+  #   graph_pos = pr.process_node_pos("sierpinski.txt.cyjs", 243)
+  #   gr.render_network(A_0, 25, graph_pos = graph_pos)
+  #   learned = unnormalize(learn(A_0, .2))
+  #   learned /= np.sum(learned)
+  #   learned *= np.sum(A_0)
+  #   gr.render_network(learned, 26, graph_pos = graph_pos)
+  #
+  #   A, _, _ = optimize_learnability(A_0, A_0, symInfo, parameterized, .2, include_nonexistent=False)
+  #   A /= np.sum(A)
+  #   A *= np.sum(A_0)
+  #   gr.render_network(A, 27, graph_pos = graph_pos)
+  #   learned = unnormalize(learn(A, beta))
+  #   learned /= np.sum(learned)
+  #   learned *= np.sum(A_0)
+  #   gr.render_network(learned, 28, graph_pos=graph_pos)
+  #   plt.show()
+
+
+    indices = np.load(textbooks+"all_index.npy", allow_pickle= True)
+    networks_orig = np.load(textbooks + "cooc_mats.npy", allow_pickle= True)
+    for i in range(len(networks_orig)):
+        for j in range(len(networks_orig[i])):
+            networks_orig[i][j][j] = 0
+    for i in range(len(networks_orig)):
+        networks_orig[i] /= np.sum(networks_orig[i])
+        #networks_orig[i] = normalize(networks_orig[i])
+
+
+    networks = []
+    scores = []
+    for i in range(10):
+        networks.append(np.load(textbooks + str(i)+"_opt_networks.npy", allow_pickle= True))
+        scores.append(np.load(textbooks + str(i)+"_KL.npy", allow_pickle= True))
+    for i in range(len(networks)):
+        for j in range(len(betas)):
+            networks[i][j] /= np.sum(networks[i][j])
+
+    markers = ["o", "+", "*", "D", "x", "d", "^", "s", "v", ">"]
+    colors = ["orange", "sienna", "limegreen", "deepskyblue", "steelblue", "purple", "lightseagreen", "darkgrey", "black", "red"]
+    names = ["Treil", "Axler", "Edwards", "Lang", "Petersen", "Robbiano", "Bretscher", "Greub", "Hefferson", "Strang"]
+
+    np.random.shuffle(colors)
+    plt.figure(100, figsize=(6.5, 4.5))
     plt.rcParams.update({'font.size': 16})
     plt.xlabel(r'$\beta$')
-    plt.ylabel('Optimal level-1 weight')
+    plt.ylabel('KL Divergence Ratio')
+    plt.rcParams.update({'font.size': 16})
+    for i in [0,1,2,3,4,5,6,7,8,9]:
+        # plt.ylim([0.25, 1.7])
+        plt.scatter(betas, scores[i][:, 0]/ scores[i][:, 1], s = 30, alpha = .7, color = colors[i], marker = markers[i], label = names[i])
+        plt.plot(betas, scores[i][:, 0]/ scores[i][:, 1], linewidth = .6, color=colors[i])
+        plt.legend(frameon=False, prop={'size': 12}, labelspacing=.2, handletextpad=0, borderpad = 0, loc='center left', bbox_to_anchor=(1, 0.5))
     plt.tight_layout()
+    network0 = networks_orig[textbook_index]
+    network_opt = networks[textbook_index][beta_index]
+    #get_diff_stats(network0, network_opt)
 
-    plt.figure()
+    data = []
+    for i in range(10):
+        print(i)
+        data_curr = get_diff_stats(networks_orig[i], networks[i][14])
+        data.extend(data_curr)
+    data.sort()
+    data = np.array(data)
+
+    bin_size = 500
+    new_pairs = []
+    stdev_pairs = []
+    j = 0
+    # while data[j][0] == 0:
+    #     j += 1
+    while j < len(data):
+        count, x, y = 0, [], []
+        while count < bin_size and j + count < len(data):
+            x.append(data[j + count][0])
+            y.append(data[j + count][1])
+            count += 1
+        if count < bin_size:
+            break
+        new_pairs.append((np.mean(x), np.mean(y)))
+        stdev_pairs.append((np.std(x), np.std(y)))
+        j += count
+    new_pairs = np.array(new_pairs)
+    stdev_pairs = np.array(stdev_pairs)
+    plt.figure(7, figsize = (5.5, 4.5))
     ax = plt.gca()
-    plt.rcParams.update({'font.size': 16})
-    plt.plot(betas2, outcomes[:,3] - outcomes[:,0], color = "firebrick", label = r'$\lambda _{b}^1 - \lambda _{b}^2$')
-    plt.plot(betas2, outcomes[:,1] - outcomes[:,2],  color = "cadetblue", label = r'$\lambda_{cc}^1 - \lambda _{cc}^2$')
-    plt.legend(frameon = False)
+    plt.scatter(new_pairs[:, 0], new_pairs[:, 1], color = 'sandybrown', s = 30)
+    plt.xlabel('Edge degree centrality', fontsize = 16)
+    plt.ylabel('Optimal weight scaling')
+    plt.ylim([-0.1,3.25])
+    plt.ticklabel_format(axis='x', style='sci')
+    ax.xaxis.major.formatter.set_powerlimits((0, 0))
+    ax.xaxis.major.formatter._useMathText = True
+    plt.tight_layout()
+    #plt.errorbar(new_pairs[:, 0], new_pairs[:, 1], xerr = stdev_pairs[:,0], yerr=stdev_pairs[:,1], fmt='o', capsize = 2, elinewidth= .5)
+
+
+    CPData, stdev = all_core_periphery(networks_orig, networks)
+    colors_class = ["tomato", "lightgreen", "cornflowerblue", "grey"]
+    class_names = ["P-P within-cluster", "P-P cross-cluster", "P-C", "C-C"]
+    for i in range(10):
+        plt.figure(300 + i)
+        for k in range(4):
+            plt.scatter(betas, CPData[i, :, k], s = 50, alpha = .7, color = colors_class[k], label = class_names[k], marker = '*')
+            plt.plot(betas, CPData[i, :, k], linewidth = .6, color = colors_class[k])
+            #plt.errorbar(betas, CPData[i, :, k], yerr = stdev[i,:, k], capsize= 5, ecolor = colors[k])
+            #plt.fill_between(betas, CPData[i, :, k] - stdev[i, :, k], CPData[i, :, k] + stdev[i, :, k], alpha = .2)
+            plt.legend(frameon=False)
+
+    CPData_all, stdev_all, classified = all_core_periphery_avged(networks_orig, networks)
+    colors2 = ["tomato", "lightgreen", "cornflowerblue", "grey"]
+    labels = ['P-P within-cluster', 'P-P cross-cluster', 'P-C', 'C-C']
+    plt.figure(310, figsize = (5.5, 4.5))
     plt.rcParams.update({'font.size': 16})
     plt.xlabel(r'$\beta$')
-    plt.ylabel('Optimal cross-level weight diff.')
-    plt.ticklabel_format(axis = 'y', style = 'sci')
-    ax.yaxis.major.formatter.set_powerlimits((0, 0))
-    ax.yaxis.major.formatter._useMathText = True
+    plt.ylabel('Mean optimal weight scaling')
+    plt.rcParams.update({'font.size': 16})
+    for k in range(4):
+        plt.scatter(betas, CPData_all[:, k], s=50, alpha=.7, color=colors2[k], label=labels[k], marker = '*')
+        plt.plot(betas, CPData_all[:, k], linewidth=.6, color=colors2[k])
+        #plt.fill_between(betas, CPData_all[:, k] - stdev_all[:, k], CPData_all[:, k] + stdev_all[:, k], alpha=.1, color = colors[k])
+        plt.legend(frameon = False, loc = 'upper right')
+    plt.tight_layout()
+    # plt.yscale('log')
+
+    plt.figure(200, figsize = (4.4, 3.6))
+    plt.rcParams.update({'font.size': 16})
+    plt.xlabel("P-P within-cluster weight scaling", fontsize = 14)
+    plt.ylabel("Probability density")
+    plt.rcParams.update({'font.size': 16})
+    plt.hist(classified[14][0], bins=30, density = True, color = colors2[0], linewidth = .6, edgecolor='black')
+    plt.tight_layout()
+    plt.figure(201, figsize = (4.4, 3.6))
+    plt.rcParams.update({'font.size': 16})
+    plt.xlabel("P-P cross-cluster weight scaling", fontsize = 14)
+    plt.ylabel("Probability density")
+    plt.rcParams.update({'font.size': 16})
+    plt.hist(classified[14][1], bins=30, density = True, color = colors2[1], linewidth = .6,  edgecolor='black')
+    plt.tight_layout()
+    plt.figure(202, figsize = (4.4, 3.6))
+    plt.rcParams.update({'font.size': 16})
+    plt.xlabel("P-C weight scaling")
+    plt.ylabel("Probability density")
+    plt.rcParams.update({'font.size': 16})
+    plt.hist(classified[14][2], bins=30, density = True, color = colors2[2], linewidth = .6,  edgecolor='black')
+    plt.tight_layout()
+    plt.figure(203, figsize = (4.4, 3.6))
+    plt.xlabel("C-C weight scaling")
+    plt.ylabel("Probability density")
+    plt.hist(classified[14][3], bins=30, density=True, color=colors2[3], linewidth=.6, edgecolor='black')
     plt.tight_layout()
 
-    plt.figure()
-    plt.rcParams.update({'font.size': 16})
-    plt.plot(betas2, scores[:, 0], color = "lightgrey", label='Original ('+r'$A_{in} = A$'+')')
-    plt.plot(betas2, scores[:, 1], color = "black", label='Optimized (' + r'$A_{in} = A^{*}$' + ')')
-    plt.rcParams.update({'font.size': 16})
-    plt.xlabel(r'$\beta$')
-    plt.ylabel('KL Divergence, ' + r'$D_{KL}(A||f(A_{in}))$')
-    plt.legend(frameon = False)
-    plt.tight_layout()
-
-    # A_0 = parameterized([0.2,1,2,4])
-    # graph_pos = nx.drawing.nx_pydot.graphviz_layout(nx.from_numpy_matrix(A_0), prog = 'sfdp')
-    # graph_pos = nx.kamada_kawai_layout(nx.from_numpy_matrix(A_0))
-    # graph_pos = nx.spring_layout(nx.from_numpy_matrix(A_0))
-    graph_pos = pr.process_node_pos("sierpinski.txt.cyjs", 243)
-    gr.render_network(A_0, 25, graph_pos = graph_pos)
-    learned = unnormalize(learn(A_0, beta))
-    learned /= np.sum(learned)
-    learned *= np.sum(A_0)
-    gr.render_network(learned, 26, graph_pos = graph_pos)
-
-    A, _, _ = optimize_learnability(A_0, A_0, symInfo, parameterized, .05, include_nonexistent=False)
-    A /= np.sum(A)
-    A *= np.sum(A_0)
-    gr.render_network(A, 27, graph_pos = graph_pos)
-    learned = unnormalize(learn(A, beta))
-    learned /= np.sum(learned)
-    learned *= np.sum(A_0)
-    gr.render_network(learned, 28, graph_pos=graph_pos)
     plt.show()
-
-
-    # indices = np.load(textbooks+"all_index.npy", allow_pickle= True)
-    # networks_orig = np.load(textbooks + "cooc_mats.npy", allow_pickle= True)
-    # for i in range(len(networks_orig)):
-    #     for j in range(len(networks_orig[i])):
-    #         networks_orig[i][j][j] = 0
-    # for i in range(len(networks_orig)):
-    #     networks_orig[i] /= np.sum(networks_orig[i])
-    #     #networks_orig[i] = normalize(networks_orig[i])
-    #
-    #
-    # networks = []
-    # scores = []
-    # for i in range(10):
-    #     networks.append(np.load(textbooks + str(i)+"_opt_networks.npy", allow_pickle= True))
-    #     scores.append(np.load(textbooks + str(i)+"_KL.npy", allow_pickle= True))
-    # for i in range(len(networks)):
-    #     for j in range(len(betas)):
-    #         networks[i][j] /= np.sum(networks[i][j])
-    #
-    # markers = ["o", "+", "*", "D", "x", "d", "^", "s", "v", ">"]
-    # colors = ["orange", "sienna", "limegreen", "deepskyblue", "steelblue", "purple", "lightseagreen", "darkgrey", "black", "red"]
-    # names = ["Treil", "Axler", "Edwards", "Lang", "Petersen", "Robbiano", "Bretscher", "Greub", "Hefferson", "Strang"]
-    #
-    # np.random.shuffle(colors)
-    # plt.figure(100, figsize=(6.5, 4.5))
-    # plt.rcParams.update({'font.size': 16})
-    # plt.xlabel(r'$\beta$')
-    # plt.ylabel('KL Divergence Ratio')
-    # plt.rcParams.update({'font.size': 16})
-    # for i in [0,1,2,3,4,5,6,7,8,9]:
-    #     # plt.ylim([0.25, 1.7])
-    #     plt.scatter(betas, scores[i][:, 0]/ scores[i][:, 1], s = 30, alpha = .7, color = colors[i], marker = markers[i], label = names[i])
-    #     plt.plot(betas, scores[i][:, 0]/ scores[i][:, 1], linewidth = .6, color=colors[i])
-    #     plt.legend(frameon=False, prop={'size': 12}, labelspacing=.2, handletextpad=0, borderpad = 0, loc='center left', bbox_to_anchor=(1, 0.5))
-    # plt.tight_layout()
-    # network0 = networks_orig[textbook_index]
-    # network_opt = networks[textbook_index][beta_index]
-    # get_diff_stats(network0, network_opt)
-    #
-    # CPData, stdev = all_core_periphery(networks_orig, networks)
-    # colors_class = ["tomato", "lightgreen", "cornflowerblue", "grey"]
-    # class_names = ["P-P within-cluster", "P-P cross-cluster", "P-C", "C-C"]
-    # for i in range(10):
-    #     plt.figure(300 + i)
-    #     for k in range(4):
-    #         plt.scatter(betas, CPData[i, :, k], s = 30, alpha = .7, color = colors_class[k], label = class_names[k])
-    #         plt.plot(betas, CPData[i, :, k], linewidth = .6, color = colors_class[k])
-    #         #plt.errorbar(betas, CPData[i, :, k], yerr = stdev[i,:, k], capsize= 5, ecolor = colors[k])
-    #         #plt.fill_between(betas, CPData[i, :, k] - stdev[i, :, k], CPData[i, :, k] + stdev[i, :, k], alpha = .2)
-    #         plt.legend(frameon=False)
-    #
-    # # CPData_all, stdev_all = all_core_periphery_avged(networks_orig, networks)
-    # # plt.figure(300 + i)
-    # # for k in range(4):
-    # #     plt.scatter(betas, CPData_all[:, k], s=30, alpha=.7, color=colors[k], label=str(k))
-    # #     plt.plot(betas, CPData_all[:, k], linewidth=.6, color=colors[k])
-    # #   #  plt.fill_between(betas, CPData_all[:, k] - stdev_all[:, k], CPData_all[:, k] + stdev_all[:, k], alpha=.2)
-    # #     plt.legend()
-    # # # plt.yscale('log')
-    # plt.show()
 
     # #network0 = np.load(textbooks + "cooc_mats.npy", allow_pickle= True)
     # network0 = np.load("cooc_mats.npy", allow_pickle=True)
