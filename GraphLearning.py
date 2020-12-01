@@ -39,7 +39,7 @@ head_dir = "C:/Users/billy/PycharmProjects/GraphLearningAgents/"
 # social = head_dir + "graphs_Social_share/"
 # citation = head_dir + "graphs_Citation_share/"
 # semantic = head_dir + "graphs_Semantic_share/"
-textbooks = head_dir + "textbooks2/"
+textbooks = head_dir + "textbooks3/"
 
 def learn(A, beta):
     A = normalize(A)
@@ -757,6 +757,9 @@ if __name__ == '__main__':
     CPData_all, stdev_all, classified = all_core_periphery_avged(networks_orig, networks)
     colors2 = ["tomato", "lightgreen", "cornflowerblue", "grey"]
     labels = [r'$\langle\lambda _{P,P}^{wc}\rangle$', r'$\langle\lambda _{P,P}^{cc}\rangle$', r'$\langle\lambda _{P,C}\rangle$', r'$\langle\lambda _{C,C}\rangle$']
+    #labels = [r'$\lambda _{P,P}^{wc}$', r'$\lambda _{P,P}^{cc}$', r'$\lambda _{P,C}$', r'$\lambda _{C,C}$']
+    #labels = ['P-P within-cluster', 'P-P cross-cluster', 'P-C', 'C-C']
+
     plt.figure(310, figsize = (5.5, 4.5))
     plt.rcParams.update({'font.size': 16})
     plt.xlabel(r'$\beta$')
@@ -764,53 +767,53 @@ if __name__ == '__main__':
     plt.rcParams.update({'font.size': 16})
     ax = plt.gca()
     for k in range(4):
-        #plt.scatter(betas, CPData_all[:, k], s=50, alpha=.7, color=colors2[k], label=labels[k], marker = '*')
-        plt.plot(betas, CPData_all[:, k], linewidth=1, color=colors2[k], label=labels[k])
+        plt.scatter(betas, CPData_all[:, k], s=50, alpha=.7, color=colors2[k], label=labels[k], marker = '*')
+        plt.plot(betas, CPData_all[:, k], linewidth=1, color=colors2[k])
         #plt.fill_between(betas, CPData_all[:, k] - stdev_all[:, k], CPData_all[:, k] + stdev_all[:, k], alpha=.1, color = colors[k])
-        #plt.legend(frameon = False, loc = 'upper right',  labelspacing=.2, handletextpad=0, borderpad = 0)
-        plt.legend(frameon = False, ncol=2)
+        plt.legend(frameon = False, loc = 'upper right',  labelspacing=.2, handletextpad=0, borderpad = 0)
+        #plt.legend(frameon = False, ncol=2)
     plt.tight_layout()
     # plt.yscale('log')
 
-    handles, labels = ax.get_legend_handles_labels()
-    plt.close()
-    fig_legend = plt.figure(figsize=(2, 2))
-    plt.box(False)
-    axi = fig_legend.add_subplot(111)
-    fig_legend.legend(handles, labels, loc='center', scatterpoints=1)
-    axi.xaxis.set_visible(False)
-    axi.yaxis.set_visible(False)
-    fig_legend.canvas.draw()
-    fig_legend.show()
+    # handles, labels = ax.get_legend_handles_labels()
+    # plt.close()
+    # fig_legend = plt.figure(figsize=(2, 2))
+    # plt.box(False)
+    # axi = fig_legend.add_subplot(111)
+    # fig_legend.legend(handles, labels, loc='center', scatterpoints=1)
+    # axi.xaxis.set_visible(False)
+    # axi.yaxis.set_visible(False)
+    # fig_legend.canvas.draw()
+    # fig_legend.show()
 
-    plt.figure(200, figsize = (4.4, 3.6))
+    plt.figure(200, figsize = (3.25, 2.7))
     plt.rcParams.update({'font.size': 16})
     #plt.xlabel("P-P within-cluster weight scaling", fontsize = 14)
     plt.xlabel(r'$\lambda _{P,P}^{wc}$', fontsize = 20)
-    plt.ylabel("Probability density")
+    plt.ylabel("Prob. density")
     plt.rcParams.update({'font.size': 16})
     plt.hist(classified[14][0], bins=30, density = True, color = colors2[0], linewidth = .6, edgecolor='black')
     plt.tight_layout()
-    plt.figure(201, figsize = (4.4, 3.6))
+    plt.figure(201, figsize = (3.25, 2.7))
     plt.rcParams.update({'font.size': 16})
     #plt.xlabel("P-P cross-cluster weight scaling", fontsize = 14)
     plt.xlabel(r'$\lambda _{P,P}^{cc}$', fontsize = 20)
-    plt.ylabel("Probability density")
+    plt.ylabel("Prob. density")
     plt.rcParams.update({'font.size': 16})
     plt.hist(classified[14][1], bins=30, density = True, color = colors2[1], linewidth = .6,  edgecolor='black')
     plt.tight_layout()
-    plt.figure(202, figsize = (4.4, 3.6))
+    plt.figure(202, figsize = (3.25, 2.7))
     plt.rcParams.update({'font.size': 16})
     #plt.xlabel("P-C weight scaling")
     plt.xlabel(r'$\lambda _{P,C}$', fontsize = 20)
-    plt.ylabel("Probability density")
+    plt.ylabel("Prob. density")
     plt.rcParams.update({'font.size': 16})
     plt.hist(classified[14][2], bins=30, density = True, color = colors2[2], linewidth = .6,  edgecolor='black')
     plt.tight_layout()
-    plt.figure(203, figsize = (4.4, 3.6))
+    plt.figure(203, figsize = (3.0, 2.7))
     #plt.xlabel("C-C weight scaling")
     plt.xlabel(r'$\lambda _{C,C}$', fontsize = 20)
-    plt.ylabel("Probability density")
+    plt.ylabel("Prob. density")
     plt.hist(classified[14][3], bins=30, density=True, color=colors2[3], linewidth=.6, edgecolor='black')
     plt.tight_layout()
 
